@@ -1,9 +1,17 @@
+using System;
+using System.Diagnostics;
 using ShardingCore.Core.VirtualRoutes.TableRoutes.RoutingRuleEngine;
 using ShardingCore.Sharding.Abstractions;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using ShardingCore.Core.ShardingConfigurations.Abstractions;
+using ShardingCore.Core.TrackerManagers;
 using ShardingCore.Core.VirtualRoutes.DataSourceRoutes.RouteRuleEngine;
 using ShardingCore.Core.VirtualRoutes.TableRoutes.RouteTails.Abstractions;
+using ShardingCore.Exceptions;
+using ShardingCore.Extensions;
+using ShardingCore.Sharding.MergeContexts;
+using ShardingCore.Sharding.ShardingExecutors.Abstractions;
 
 namespace ShardingCore.Sharding
 {
@@ -13,24 +21,49 @@ namespace ShardingCore.Sharding
     * @Date: Thursday, 28 January 2021 16:52:43
     * @Email: 326308290@qq.com
     */
-    public class StreamMergeContextFactory<TShardingDbContext> : IStreamMergeContextFactory<TShardingDbContext> where TShardingDbContext:DbContext,IShardingDbContext
+    public class StreamMergeContextFactory : IStreamMergeContextFactory
     {
-        private readonly IDataSourceRouteRuleEngineFactory<TShardingDbContext> _dataSourceRouteRuleEngineFactory;
-        private readonly ITableRouteRuleEngineFactory<TShardingDbContext> _tableRouteRuleEngineFactory;
-        private readonly IRouteTailFactory _routeTailFactory;
+        private readonly IQueryableParseEngine _queryableParseEngine;
+        private readonly IQueryableRewriteEngine _queryableRewriteEngine;
+        private readonly IQueryableOptimizeEngine _queryableOptimizeEngine;
 
-        public StreamMergeContextFactory(IDataSourceRouteRuleEngineFactory<TShardingDbContext> dataSourceRouteRuleEngineFactory,
-            ITableRouteRuleEngineFactory<TShardingDbContext> tableRouteRuleEngineFactory,IRouteTailFactory routeTailFactory)
+        public StreamMergeContextFactory(IQueryableParseEngine queryableParseEngine,
+            IQueryableRewriteEngine queryableRewriteEngine,
+            IQueryableOptimizeEngine queryableOptimizeEngine)
         {
-            _dataSourceRouteRuleEngineFactory = dataSourceRouteRuleEngineFactory;
-            _tableRouteRuleEngineFactory = tableRouteRuleEngineFactory;
-            _routeTailFactory = routeTailFactory;
+            _queryableParseEngine = queryableParseEngine;
+            _queryableRewriteEngine = queryableRewriteEngine;
+            _queryableOptimizeEngine = queryableOptimizeEngine;
         }
-        public StreamMergeContext<T> Create<T>(IQueryable<T> queryable,IShardingDbContext shardingDbContext)
+        public StreamMergeContext Create(IMergeQueryCompilerContext mergeQueryCompilerContext)
         {
-            var dataSourceRouteResult = _dataSourceRouteRuleEngineFactory.Route(queryable);
-            var tableRouteResults = _tableRouteRuleEngineFactory.Route(queryable);
-            return new StreamMergeContext<T>(queryable,shardingDbContext, dataSourceRouteResult, tableRouteResults, _routeTailFactory);
+            var parseResult = _queryableParseEngine.Parse(mergeQueryCompilerContext);
+            
+            var rewriteResult = _queryableRewriteEngine.GetRewriteQueryable(mergeQueryCompilerContext, parseResult);
+            var optimizeResult = _queryableOptimizeEngine.Optimize(mergeQueryCompilerContext, parseResult, rewriteResult);
+            CheckMergeContext(mergeQueryCompilerContext, parseResult, rewriteResult, optimizeResult);
+            return new StreamMergeContext(mergeQueryCompilerContext, parseResult, rewriteResult,optimizeResult);
+        }
+
+        private void CheckMergeContext(IMergeQueryCompilerContext mergeQueryCompilerContext,IParseResult parseResult,IRewriteResult rewriteResult,IOptimizeResult optimizeResult)
+        {
+            var paginationContext = parseResult.GetPaginationContext();
+            if (paginationContext.Skip is < 0)
+            {
+                throw new ShardingCoreException($"queryable skip should >= 0");
+            }
+            if (paginationContext.Take is < 0)
+            {
+                throw new ShardingCoreException($"queryable take should >= 0");
+            }
+            if (!mergeQueryCompilerContext.IsEnumerableQuery())
+            {
+                if ((nameof(Enumerable.Last)==mergeQueryCompilerContext.GetQueryMethodName()||nameof(Enumerable.LastOrDefault)==mergeQueryCompilerContext.GetQueryMethodName())&&parseResult.GetOrderByContext().PropertyOrders.IsEmpty())
+                {
+                    throw new InvalidOperationException(
+                        "Queries performing 'LastOrDefault' operation must have a deterministic sort order. Rewrite the query to apply an 'OrderBy' operation on the sequence before calling 'LastOrDefault'");
+                }
+            }
         }
     }
 }

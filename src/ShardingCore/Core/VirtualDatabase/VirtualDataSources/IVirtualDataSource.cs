@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using ShardingCore.Core.VirtualDatabase.VirtualDataSources.Abstractions;
 using ShardingCore.Core.VirtualDatabase.VirtualDataSources.PhysicDataSources;
 using ShardingCore.Core.VirtualRoutes;
 using ShardingCore.Core.VirtualRoutes.DataSourceRoutes;
-using ShardingCore.Core.VirtualTables;
+using ShardingCore.Exceptions;
 using ShardingCore.Sharding.Abstractions;
 
 namespace ShardingCore.Core.VirtualDatabase.VirtualDataSources
@@ -15,44 +17,94 @@ namespace ShardingCore.Core.VirtualDatabase.VirtualDataSources
     * @Date: Friday, 05 February 2021 13:01:39
     * @Email: 326308290@qq.com
     */
-    /// <summary>
-    /// 虚拟数据源 连接所有的实际数据源
-    /// </summary>
-    public interface IVirtualDataSource<TShardingDbContext> 
-        where TShardingDbContext : DbContext, IShardingDbContext
+
+    public interface IVirtualDataSource
     {
+        /// <summary>
+        /// 数据源配置
+        /// </summary>
+        IVirtualDataSourceConfigurationParams ConfigurationParams { get; }
+        /// <summary>
+        /// 链接字符串管理
+        /// </summary>
+        IConnectionStringManager ConnectionStringManager { get; }
+        /// <summary>
+        /// 是否启用了读写分离
+        /// </summary>
+        bool UseReadWriteSeparation { get; }
+        /// <summary>
+        /// 默认的数据源名称
+        /// </summary>
         string DefaultDataSourceName { get; }
         /// <summary>
-        /// 路由到具体的物理数据源
+        /// 默认连接字符串
         /// </summary>
-        /// <param name="entityType"></param>
-        /// <param name="routeRouteConfig"></param>
-        /// <returns>data source names</returns>
-        List<string> RouteTo(Type entityType, ShardingDataSourceRouteConfig routeRouteConfig);
+        string DefaultConnectionString { get;}
+       
 
         /// <summary>
-        /// 获取当前数据源的路由
+        /// 获取默认的数据源信息
         /// </summary>
         /// <returns></returns>
-        IVirtualDataSourceRoute GetRoute(Type entityType);
-
-        ISet<IPhysicDataSource> GetAllPhysicDataSources();
         IPhysicDataSource GetDefaultDataSource();
         /// <summary>
         /// 获取数据源
         /// </summary>
         /// <param name="dataSourceName"></param>
+        /// <exception cref="ShardingCoreNotFoundException">
+        ///     thrown if data source name is not in virtual data source
+        ///     the length of the buffer
+        /// </exception>
         /// <returns></returns>
         IPhysicDataSource GetPhysicDataSource(string dataSourceName);
+        /// <summary>
+        /// 获取所有的数据源名称
+        /// </summary>
+        /// <returns></returns>
+        List<string> GetAllDataSourceNames();
 
         /// <summary>
-        /// 添加物理表 add physic data source
+        /// 获取连接字符串
+        /// </summary>
+        /// <param name="dataSourceName"></param>
+        /// <returns></returns>
+        /// <exception cref="ShardingCoreNotFoundException"></exception>
+        string GetConnectionString(string dataSourceName);
+
+        /// <summary>
+        /// 添加数据源
         /// </summary>
         /// <param name="physicDataSource"></param>
-        /// <returns>是否添加成功</returns>
+        /// <returns></returns>
+        /// <exception cref="ShardingCoreInvalidOperationException">重复添加默认数据源</exception>
         bool AddPhysicDataSource(IPhysicDataSource physicDataSource);
 
-        bool AddVirtualDataSourceRoute(IVirtualDataSourceRoute virtualDataSourceRoute);
+        /// <summary>
+        /// 是否默认数据源
+        /// </summary>
+        /// <param name="dataSourceName"></param>
+        /// <returns></returns>
         bool IsDefault(string dataSourceName);
+        /// <summary>
+        /// 检查是否配置默认数据源和默认链接字符串
+        /// </summary>
+        /// <exception cref="ShardingCoreInvalidOperationException"></exception>
+        void CheckVirtualDataSource();
+        /// <summary>
+        /// 如何根据connectionString 配置 DbContextOptionsBuilder
+        /// </summary>
+        /// <param name="connectionString"></param>
+        /// <param name="dbContextOptionsBuilder"></param>
+        /// <returns></returns>
+        DbContextOptionsBuilder UseDbContextOptionsBuilder(string connectionString, DbContextOptionsBuilder dbContextOptionsBuilder);
+        /// <summary>
+        /// 如何根据dbConnection 配置DbContextOptionsBuilder
+        /// </summary>
+        /// <param name="dbConnection"></param>
+        /// <param name="dbContextOptionsBuilder"></param>
+        /// <returns></returns>
+        DbContextOptionsBuilder UseDbContextOptionsBuilder(DbConnection dbConnection, DbContextOptionsBuilder dbContextOptionsBuilder);
+
+        IDictionary<string, string> GetDataSources();
     }
 }

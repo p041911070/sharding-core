@@ -1,5 +1,5 @@
-using ShardingCore.Core;
-using ShardingCore.Core.VirtualRoutes.TableRoutes.Abstractions;
+using System;
+using ShardingCore.Helpers;
 
 namespace ShardingCore.VirtualRoutes.Abstractions
 {
@@ -12,18 +12,9 @@ namespace ShardingCore.VirtualRoutes.Abstractions
     /// <summary>
     /// sharding table route by time stamp (ms)
     /// </summary>
-    /// <typeparam name="T">entity</typeparam>
-    public abstract class AbstractShardingTimeKeyLongVirtualTableRoute<T> : AbstractShardingOperatorVirtualTableRoute<T, long> where T : class, IShardingTable
+    /// <typeparam name="TEntity">entity</typeparam>
+    public abstract class AbstractShardingTimeKeyLongVirtualTableRoute<TEntity> : AbstractShardingAutoCreateOperatorVirtualTableRoute<TEntity, long> where TEntity : class
     {
-        /// <summary>
-        /// how convert object to long
-        /// </summary>
-        /// <param name="shardingKey"></param>
-        /// <returns></returns>
-        protected override long ConvertToShardingKey(object shardingKey)
-        {
-            return (long)shardingKey;
-        }
         /// <summary>
         /// how convert sharding key to tail
         /// </summary>
@@ -31,7 +22,7 @@ namespace ShardingCore.VirtualRoutes.Abstractions
         /// <returns></returns>
         public override string ShardingKeyToTail(object shardingKey)
         {
-            var time = ConvertToShardingKey(shardingKey);
+            var time = (long)shardingKey;
             return TimeFormatToTail(time);
         }
         /// <summary>
@@ -41,5 +32,9 @@ namespace ShardingCore.VirtualRoutes.Abstractions
         /// <returns></returns>
         protected abstract string TimeFormatToTail(long time);
 
+        protected override string ConvertNowToTail(DateTime now)
+        {
+            return ShardingKeyToTail(ShardingCoreHelper.ConvertDateTimeToLong(now));
+        }
     }
 }

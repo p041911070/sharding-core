@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using Sample.SqlServer.Domain.Entities;
+using ShardingCore.Core.EntityMetadatas;
 using ShardingCore.Core.VirtualRoutes;
 using ShardingCore.Core.VirtualRoutes.TableRoutes.Abstractions;
+using ShardingCore.Sharding.EntityQueryConfigurations;
 using ShardingCore.Sharding.PaginationConfigurations;
 
 namespace Sample.SqlServer.Shardings
@@ -16,19 +18,15 @@ namespace Sample.SqlServer.Shardings
 */
     public class SysUserSalaryVirtualTableRoute:AbstractShardingOperatorVirtualTableRoute<SysUserSalary,int>
     {
-        protected override int ConvertToShardingKey(object shardingKey)
-        {
-            return Convert.ToInt32(shardingKey);
-        }
 
         public override string ShardingKeyToTail(object shardingKey)
         {
-            var time = ConvertToShardingKey(shardingKey);
+            var time = Convert.ToInt32(shardingKey);
             return TimeFormatToTail(time);
         }
 
 
-        public override List<string> GetAllTails()
+        public override List<string> GetTails()
         {
             var beginTime = new DateTime(2020, 1, 1);
             var endTime = new DateTime(2021, 12, 1);
@@ -43,13 +41,18 @@ namespace Sample.SqlServer.Shardings
             return list;
         }
 
+        public override void Configure(EntityMetadataTableBuilder<SysUserSalary> builder)
+        {
+            builder.ShardingProperty(o => o.DateOfMonth);
+        }
+
         protected  string TimeFormatToTail(int time)
         {
             var dateOfMonth=DateTime.ParseExact($"{time}","yyyyMM",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.AdjustToUniversal);
             return $"{dateOfMonth:yyyyMM}";
         }
 
-        protected override Expression<Func<string, bool>> GetRouteToFilter(int shardingKey, ShardingOperatorEnum shardingOperator)
+        public override Func<string, bool> GetRouteToFilter(int shardingKey, ShardingOperatorEnum shardingOperator)
         {
             var t = TimeFormatToTail(shardingKey);
             switch (shardingOperator)
@@ -75,6 +78,11 @@ namespace Sample.SqlServer.Shardings
         public override IPaginationConfiguration<SysUserSalary> CreatePaginationConfiguration()
         {
             return new SysUserSalaryPaginationConfiguration();
+        }
+
+        public override IEntityQueryConfiguration<SysUserSalary> CreateEntityQueryConfiguration()
+        {
+            return new SysUserSalaryEntityQueryConfiguration();
         }
     }
 }

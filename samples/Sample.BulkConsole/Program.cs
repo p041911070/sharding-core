@@ -10,7 +10,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using ShardingCore.Bootstrappers;
 using ShardingCore.Extensions.ShardingPageExtensions;
+using ShardingCore.TableExists;
+using ShardingCore.TableExists.Abstractions;
 
 namespace Sample.BulkConsole
 {
@@ -22,24 +25,30 @@ namespace Sample.BulkConsole
         });
         static void Main(string[] args)
         {
+            var s = Guid.NewGuid().ToString("n");
             var services = new ServiceCollection();
             services.AddLogging();
-            services.AddShardingDbContext<MyShardingDbContext>(
-                    (conn, o) => o.UseSqlServer(conn))
-                .Begin(o =>
+
+            services.AddShardingDbContext<MyShardingDbContext>()
+                .AddEntityConfig(o =>
                 {
-                    o.CreateShardingTableOnStart = true;
-                    o.EnsureCreatedWithOutShardingTable = true;
-                    o.AutoTrackEntity = true;
+                    o.AddShardingTableRoute<OrderVirtualRoute>();
                 })
-                .AddShardingTransaction((connection, builder) =>
-                    builder.UseSqlServer(connection).UseLoggerFactory(efLogger))
-                .AddDefaultDataSource("ds0", "Data Source=localhost;Initial Catalog=MyOrderSharding;Integrated Security=True;")
-                .AddShardingTableRoute(op=> {
-                    op.AddShardingTableRoute<OrderVirtualRoute>();
-                }).End();
+                .AddConfig(op =>
+                {
+                    op.UseShardingQuery((conStr, builder) =>
+                    {
+                        builder.UseSqlServer(conStr).UseLoggerFactory(efLogger);
+                    });
+                    op.UseShardingTransaction((connection, builder) =>
+                    {
+                        builder.UseSqlServer(connection).UseLoggerFactory(efLogger);
+                    });
+                    op.AddDefaultDataSource("ds0", "Data Source=localhost;Initial Catalog=MyOrderSharding;Integrated Security=True;");
+
+                }).ReplaceService<ITableEnsureManager,SqlServerTableEnsureManager>().EnsureConfig();
             var serviceProvider = services.BuildServiceProvider();
-            serviceProvider.GetService<IShardingBootstrapper>().Start();
+            serviceProvider.UseAutoTryCompensateTable();
             using (var serviceScope = serviceProvider.CreateScope())
             {
                 var myShardingDbContext = serviceScope.ServiceProvider.GetService<MyShardingDbContext>();
@@ -80,43 +89,52 @@ namespace Sample.BulkConsole
                 }
 
                 var b = DateTime.Now.Date.AddDays(-3);
-                var queryable = myShardingDbContext.Set<Order>().Where(o => o.CreateTime >= b).OrderBy(o => o.CreateTime);
-
+                var queryable = myShardingDbContext.Set<Order>().Select(o=>new {Id=o.Id,OrderNo=o.OrderNo, CreateTime =o.CreateTime });//.Where(o => o.CreateTime >= b);
+                var dateTime = DateTime.Now;
+                var dbContexts = myShardingDbContext.BulkShardingTableExpression<MyShardingDbContext,Order>(o=>o.CreateTime<=dateTime);
+                using (var dbContextTransaction = myShardingDbContext.Database.BeginTransaction())
+                {
+                    foreach (var dbContext in dbContexts)
+                    {
+                        dbContext.Set<Order>().Where(o=>o.CreateTime<=dateTime).BatchUpdate(a => new Order { OrderNo = "12345" });
+                    }
+                    dbContextTransaction.Commit();
+                }
                 var startNew1 = Stopwatch.StartNew();
 
 
-                startNew1.Restart();
-                var list2 = queryable.Take(1000).ToList();
-                startNew1.Stop();
-                Console.WriteLine($"获取1000条用时:{startNew1.ElapsedMilliseconds}毫秒");
+                //startNew1.Restart();
+                //var list2 = queryable.Take(1000).ToList();
+                //startNew1.Stop();
+                //Console.WriteLine($"获取1000条用时:{startNew1.ElapsedMilliseconds}毫秒");
 
-                startNew1.Restart();
-                var list = queryable.Take(10).ToList();
-                startNew1.Stop();
-                Console.WriteLine($"获取10条用时:{startNew1.ElapsedMilliseconds}毫秒");
-
-
-                startNew1.Restart();
-                var list1 = queryable.Take(100).ToList();
-                startNew1.Stop();
-                Console.WriteLine($"获取100条用时:{startNew1.ElapsedMilliseconds}毫秒");
+                //startNew1.Restart();
+                //var list = queryable.Take(10).ToList();
+                //startNew1.Stop();
+                //Console.WriteLine($"获取10条用时:{startNew1.ElapsedMilliseconds}毫秒");
 
 
-                startNew1.Restart();
-                var list3 = queryable.Take(10000).ToList();
-                startNew1.Stop();
-                Console.WriteLine($"获取100000条用时:{startNew1.ElapsedMilliseconds}毫秒");
+                //startNew1.Restart();
+                //var list1 = queryable.Take(100).ToList();
+                //startNew1.Stop();
+                //Console.WriteLine($"获取100条用时:{startNew1.ElapsedMilliseconds}毫秒");
+
+
+                //startNew1.Restart();
+                //var list3 = queryable.Take(10000).ToList();
+                //startNew1.Stop();
+                //Console.WriteLine($"获取100000条用时:{startNew1.ElapsedMilliseconds}毫秒");
 
 
 
-                startNew1.Restart();
-                var list4 = queryable.Take(20000).ToList();
-                startNew1.Stop();
-                Console.WriteLine($"获取20000条用时:{startNew1.ElapsedMilliseconds}毫秒");
+                //startNew1.Restart();
+                //var list4 = queryable.Take(20000).ToList();
+                //startNew1.Stop();
+                //Console.WriteLine($"获取20000条用时:{startNew1.ElapsedMilliseconds}毫秒");
 
 
                 int skip = 0, take = 1000;
-                for (int i = 20000; i < 30000; i++)
+                for (int i = 20; i < 30000; i++)
                 {
                     skip = take * i;
                     startNew1.Restart();

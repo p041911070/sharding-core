@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using ShardingCore.Core.EntityMetadatas;
 using ShardingCore.Core.VirtualDatabase.VirtualDataSources;
 using ShardingCore.Core.VirtualDatabase.VirtualDataSources.PhysicDataSources;
+using ShardingCore.Core.VirtualRoutes.Abstractions;
 using ShardingCore.Exceptions;
 using ShardingCore.Extensions;
 using ShardingCore.Sharding.Abstractions;
@@ -18,29 +20,31 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes.RouteRuleEngine
     * @Ver: 1.0
     * @Email: 326308290@qq.com
     */
-    public class DataSourceRouteRuleEngine<TShardingDbContext> : IDataSourceRouteRuleEngine<TShardingDbContext> where TShardingDbContext : DbContext, IShardingDbContext
+    public class DataSourceRouteRuleEngine: IDataSourceRouteRuleEngine
     {
-        private readonly IVirtualDataSource<TShardingDbContext> _virtualDataSource;
+        private readonly IEntityMetadataManager _entityMetadataManager;
+        private readonly IVirtualDataSource _virtualDataSource;
+        private readonly IDataSourceRouteManager _dataSourceRouteManager;
 
-        public DataSourceRouteRuleEngine(IVirtualDataSource<TShardingDbContext> virtualDataSource)
+        public DataSourceRouteRuleEngine(IEntityMetadataManager entityMetadataManager,IVirtualDataSource virtualDataSource,IDataSourceRouteManager dataSourceRouteManager)
         {
+            _entityMetadataManager = entityMetadataManager;
             _virtualDataSource = virtualDataSource;
+            _dataSourceRouteManager = dataSourceRouteManager;
         }
-        public DataSourceRouteResult Route<T>(DataSourceRouteRuleContext<T> routeRuleContext)
+        public DataSourceRouteResult Route(DataSourceRouteRuleContext routeRuleContext)
         {
             var dataSourceMaps = new Dictionary<Type, ISet<string>>();
-            var notShardingDataSourceEntityType = routeRuleContext.QueryEntities.FirstOrDefault(o => !o.IsShardingDataSource());
-            //存在不分库的
-            if (notShardingDataSourceEntityType != null)
-                dataSourceMaps.Add(notShardingDataSourceEntityType, new HashSet<string>() { _virtualDataSource.DefaultDataSourceName });
 
-
-            var queryEntities = routeRuleContext.QueryEntities.Where(o => o.IsShardingDataSource()).ToList();
-            if (queryEntities.Count > 1)
-                throw new ShardingCoreNotSupportedException($"{routeRuleContext.Queryable.ShardingPrint()}");
-            foreach (var queryEntity in queryEntities)
+            foreach (var queryEntityKv in routeRuleContext.QueryEntities)
             {
-                var dataSourceConfigs = _virtualDataSource.RouteTo(queryEntity,new ShardingDataSourceRouteConfig(routeRuleContext.Queryable));
+                var queryEntity = queryEntityKv.Key;
+                if (!_entityMetadataManager.IsShardingDataSource(queryEntity))
+                {
+                    dataSourceMaps.Add(queryEntity, new HashSet<string>() { _virtualDataSource.DefaultDataSourceName });
+                    continue;
+                }
+                var dataSourceConfigs = _dataSourceRouteManager.RouteTo(queryEntity, new ShardingDataSourceRouteConfig(queryEntityKv.Value??routeRuleContext.Queryable));
                 if (!dataSourceMaps.ContainsKey(queryEntity))
                 {
                     dataSourceMaps.Add(queryEntity, dataSourceConfigs.ToHashSet());
@@ -55,8 +59,8 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes.RouteRuleEngine
             }
 
             if (dataSourceMaps.IsEmpty())
-                throw new ShardingDataSourceRouteNotMatchException(
-                    $"{routeRuleContext.Queryable.ShardingPrint()}");
+                throw new ShardingCoreException(
+                    $"data source route not match: {routeRuleContext.Queryable.ShardingPrint()}");
             if (dataSourceMaps.Count == 1)
                 return new DataSourceRouteResult(dataSourceMaps.First().Value);
             var intersect = dataSourceMaps.Select(o => o.Value).Aggregate((p, n) => p.Intersect(n).ToHashSet());

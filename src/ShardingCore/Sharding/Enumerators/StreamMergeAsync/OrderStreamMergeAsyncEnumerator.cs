@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ShardingCore.Core.Internal.StreamMerge;
 using ShardingCore.Extensions;
 
 namespace ShardingCore.Sharding.Enumerators
@@ -21,12 +20,12 @@ namespace ShardingCore.Sharding.Enumerators
         /// <summary>
         /// 合并数据上下文
         /// </summary>
-        private readonly StreamMergeContext<T> _mergeContext;
+        private readonly StreamMergeContext _mergeContext;
 
         private readonly IStreamMergeAsyncEnumerator<T> _enumerator;
         private List<IComparable> _orderValues;
 
-        public OrderStreamMergeAsyncEnumerator(StreamMergeContext<T> mergeContext, IStreamMergeAsyncEnumerator<T> enumerator)
+        public OrderStreamMergeAsyncEnumerator(StreamMergeContext mergeContext, IStreamMergeAsyncEnumerator<T> enumerator)
         {
             _mergeContext = mergeContext;
             _enumerator = enumerator;
@@ -100,11 +99,17 @@ namespace ShardingCore.Sharding.Enumerators
             var list = new List<IComparable>(_mergeContext.Orders.Count());
             foreach (var order in _mergeContext.Orders)
             {
-                var value = _enumerator.ReallyCurrent.GetValueByExpression(order.PropertyExpression);
+                var (propertyType,value) = _enumerator.ReallyCurrent.GetValueByExpression(order.PropertyExpression);
                 if (value is IComparable comparable)
                     list.Add(comparable);
+                else if (propertyType.IsComparableType())
+                {
+                    list.Add((IComparable)value);
+                }
                 else
-                    throw new NotSupportedException($"order by value [{order}] must  implements IComparable");
+                {
+                    throw new NotSupportedException($"order by value [{order}] must  implements IComparable");  
+                }
             }
 
             return list;
@@ -115,7 +120,7 @@ namespace ShardingCore.Sharding.Enumerators
             int i = 0;
             foreach (var order in _mergeContext.Orders)
             {
-                int result = CompareHelper.CompareToWith(_orderValues[i], other.GetCompares()[i], order.IsAsc);
+                int result = _mergeContext.GetShardingComparer().Compare(_orderValues[i], other.GetCompares()[i], order.IsAsc);
                 if (0 != result)
                 {
                     return result;

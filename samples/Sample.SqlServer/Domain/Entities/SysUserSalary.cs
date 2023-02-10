@@ -8,14 +8,13 @@ namespace Sample.SqlServer.Domain.Entities
 * @Date: Monday, 01 February 2021 15:43:22
 * @Email: 326308290@qq.com
 */
-    public class SysUserSalary:IShardingTable
+    public class SysUserSalary
     {
         public string Id { get; set; }
         public string UserId { get; set; }
         /// <summary>
         /// 每月的金额
         /// </summary>
-        [ShardingTableKey]
         public int DateOfMonth { get; set; }
         /// <summary>
         /// 工资

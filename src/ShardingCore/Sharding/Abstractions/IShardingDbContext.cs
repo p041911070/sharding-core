@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ShardingCore.Core.VirtualRoutes.TableRoutes.RouteTails.Abstractions;
 using System;
+using ShardingCore.Core.VirtualDatabase.VirtualDataSources;
 
 namespace ShardingCore.Sharding.Abstractions
 {
@@ -13,20 +14,11 @@ namespace ShardingCore.Sharding.Abstractions
     public interface IShardingDbContext
     {
         /// <summary>
-        /// create DbContext
+        /// 获取分片执行者
         /// </summary>
-        /// <param name="dataSourceName">data source</param>
-        /// <param name="parallelQuery">true not care db context life, false need call dispose()</param>
-        /// <param name="routeTail"></param>
         /// <returns></returns>
-        DbContext GetDbContext(string dataSourceName, bool parallelQuery, IRouteTail routeTail);
-        /// <summary>
-        /// 创建通用的db context
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="entity"></param>
-        /// <returns></returns>
-        DbContext CreateGenericDbContext<T>(T entity) where T : class;
+        IShardingDbContextExecutor GetShardingExecutor();
+
 
     }
 }

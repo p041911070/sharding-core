@@ -1,10 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using ShardingCore.Core.PhysicTables;
-
-#if !EFCORE5
 using ShardingCore.Extensions;
-#endif
+
 
 namespace ShardingCore.Core.VirtualRoutes.TableRoutes.RoutingRuleEngine
 {
@@ -16,16 +14,24 @@ namespace ShardingCore.Core.VirtualRoutes.TableRoutes.RoutingRuleEngine
 */
     public class TableRouteResult
     {
-        public TableRouteResult(IEnumerable<IPhysicTable> replaceTables)
+        public TableRouteResult(List<TableRouteUnit> replaceTables)
         {
             ReplaceTables = replaceTables.ToHashSet();
+            HasDifferentTail = ReplaceTables.IsNotEmpty() && ReplaceTables.GroupBy(o => o.Tail).Count() != 1;
+            IsEmpty = replaceTables.Count == 0;
+        }
+        public TableRouteResult(TableRouteUnit replaceTable):this(new List<TableRouteUnit>(){replaceTable})
+        {
         }
         
-        public ISet<IPhysicTable> ReplaceTables { get; }
+        public ISet<TableRouteUnit> ReplaceTables { get; }
+
+        public bool HasDifferentTail { get; }
+        public bool IsEmpty { get; }
 
         protected bool Equals(TableRouteResult other)
         {
-            return Equals(ReplaceTables, other.ReplaceTables);
+            return Equals(ReplaceTables, other.ReplaceTables) && HasDifferentTail == other.HasDifferentTail && IsEmpty == other.IsEmpty;
         }
 
         public override bool Equals(object obj)
@@ -33,12 +39,34 @@ namespace ShardingCore.Core.VirtualRoutes.TableRoutes.RoutingRuleEngine
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != this.GetType()) return false;
-            return Equals((TableRouteResult) obj);
+            return Equals((TableRouteResult)obj);
         }
+
+        public override string ToString()
+        {
+            return $"(has different tail:{HasDifferentTail},current table:[{string.Join(",", ReplaceTables.Select(o => $"{o.DataSourceName}.{o.Tail}.{o.EntityType}"))}])";
+        }
+
+#if !EFCORE2
 
         public override int GetHashCode()
         {
-            return (ReplaceTables != null ? ReplaceTables.GetHashCode() : 0);
+            return HashCode.Combine(ReplaceTables, HasDifferentTail, IsEmpty);
         }
+#endif
+
+#if EFCORE2
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hashCode = (ReplaceTables != null ? ReplaceTables.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ HasDifferentTail.GetHashCode();
+                hashCode = (hashCode * 397) ^ IsEmpty.GetHashCode();
+                return hashCode;
+            }
+        }
+#endif
     }
 }

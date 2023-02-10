@@ -2,6 +2,8 @@ using System.Linq.Expressions;
 using System.Threading;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using ShardingCore.Sharding.Enumerators;
+using ShardingCore.Sharding.ShardingExecutors;
+using ShardingCore.Sharding.ShardingExecutors.Abstractions;
 
 #if EFCORE2
 using Microsoft.EntityFrameworkCore.Internal;
@@ -18,21 +20,19 @@ namespace ShardingCore.Sharding.Abstractions
     public interface IShardingQueryExecutor
     {
         /// <summary>
-        /// ͬ��ִ�л�ȡ���
+        /// execute query
         /// </summary>
         /// <typeparam name="TResult"></typeparam>
-        /// <param name="currentContext"></param>
-        /// <param name="query"></param>
+        /// <param name="mergeQueryCompilerContext"></param>
         /// <returns></returns>
-        TResult Execute<TResult>(ICurrentDbContext currentContext, Expression query);
+        TResult Execute<TResult>(IMergeQueryCompilerContext mergeQueryCompilerContext);
         /// <summary>
-        /// �첽ִ�л�ȡ���
+        /// execute query async
         /// </summary>
         /// <typeparam name="TResult"></typeparam>
-        /// <param name="currentContext"></param>
-        /// <param name="query"></param>
+        /// <param name="mergeQueryCompilerContext"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        TResult ExecuteAsync<TResult>(ICurrentDbContext currentContext, Expression query, CancellationToken cancellationToken = new CancellationToken());
+        TResult ExecuteAsync<TResult>(IMergeQueryCompilerContext mergeQueryCompilerContext, CancellationToken cancellationToken = new CancellationToken());
     }
 }

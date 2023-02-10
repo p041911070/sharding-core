@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Sample.SqlServer.DbContexts;
 using Sample.SqlServer.Domain.Entities;
 using ShardingCore;
+using ShardingCore.Bootstrappers;
 
 namespace Sample.SqlServer
 {
@@ -18,19 +19,12 @@ namespace Sample.SqlServer
     */
     public static class DIExtension
     {
-        public static IApplicationBuilder UseShardingCore(this IApplicationBuilder app)
-        {
-            var shardingBootstrapper = app.ApplicationServices.GetRequiredService<IShardingBootstrapper>();
-            shardingBootstrapper.Start();
-            return app;
-        }
-
         public static void DbSeed(this IApplicationBuilder app)
         {
             using (var scope = app.ApplicationServices.CreateScope())
             {
                 var virtualDbContext = scope.ServiceProvider.GetService<DefaultShardingDbContext>();
-                if (!virtualDbContext.Set<SysUserMod>().Any())
+                if (!virtualDbContext.Set<SysUserMod>().Any(o=>o.Id=="111"))
                 {
                     var ids = Enumerable.Range(1, 1000);
                     var userMods = new List<SysUserMod>();

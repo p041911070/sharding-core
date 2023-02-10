@@ -16,7 +16,7 @@ namespace ShardingCore.Extensions
 
         //public static void ForEach<T>(this IEnumerable<T> source)
 
-#if !EFCORE5
+#if !EFCORE5 || NETSTANDARD2_1
         public static HashSet<TSource> ToHashSet<TSource>(
             this IEnumerable<TSource> source,
             IEqualityComparer<TSource> comparer = null)
@@ -47,45 +47,26 @@ namespace ShardingCore.Extensions
         {
             return !source.IsEmpty();
         }
-        public static bool IsIn<T>(this T thisValue, params T[] values)
-        {
-            return values.Contains(thisValue);
-        }
-        /// <summary>
-        /// 给IEnumerable拓展ForEach方法
-        /// </summary>
-        /// <typeparam name="T">模型类</typeparam>
-        /// <param name="enumberable">数据源</param>
-        /// <param name="func">方法</param>
-        public static void ForEach<T>(this IEnumerable<T> enumberable, Action<T> func)
-        {
-            foreach (var item in enumberable)
-            {
-                func(item);
-            }
-        }
 
-        /// <summary>
-        /// 是否有差异
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="source"></param>
-        /// <returns></returns>
-        public static bool HasDifference<T>(this IEnumerable<T> source)
+        private static readonly HashSet<string> _enumerableContainsNamespace = new HashSet<string>()
         {
-            return source.Distinct().Count() > 1;
+            "System.Linq", "System.Collections.Generic"
+        };
+        public static bool IsInEnumerable(this string thisValue)
+        {
+            return _enumerableContainsNamespace.Contains(thisValue);
         }
         /// <summary>
-        /// 是否有差异
+        /// 按size分区,每个区size个数目
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <typeparam name="TKey"></typeparam>
-        /// <param name="source"></param>
-        /// <param name="keySelector"></param>
+        /// <typeparam name="TSource"></typeparam>
+        /// <param name="elements"></param>
+        /// <param name="size"></param>
         /// <returns></returns>
-        public static bool HasDifference<T,TKey>(this IEnumerable<T> source, Func<T, TKey> keySelector)
+        public static IEnumerable<List<TSource>> Partition<TSource>(this IEnumerable<TSource> elements,int size)
         {
-            return source.Select(keySelector).Distinct().Count() > 1;
+           return elements.Select((o, i) => new { Element = o, Index = i / size })
+                .GroupBy(o => o.Index).Select(o => o.Select(g => g.Element).ToList());
         }
 
     }

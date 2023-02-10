@@ -2,14 +2,10 @@
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Text;
-using ShardingCore.Core;
-using ShardingCore.Core.PhysicTables;
-using ShardingCore.Core.VirtualDatabase.VirtualDataSources.PhysicDataSources;
-using ShardingCore.Core.VirtualDatabase.VirtualTables;
-using ShardingCore.Core.VirtualRoutes;
+using ShardingCore.Core.EntityMetadatas;
+using ShardingCore.Core.VirtualRoutes.Abstractions;
 using ShardingCore.Core.VirtualRoutes.DataSourceRoutes;
 using ShardingCore.Core.VirtualRoutes.TableRoutes;
-using ShardingCore.Core.VirtualTables;
 
 namespace ShardingCore.Extensions
 {
@@ -22,62 +18,66 @@ namespace ShardingCore.Extensions
     */
     public static class VirtualDataBaseExtension
     {
-        /// <summary>
-        /// 是否基继承至IShardingDataSource
-        /// </summary>
-        /// <param name="entityType"></param>
-        /// <returns></returns>
-        public static bool IsShardingDataSource(this Type entityType)
-        {
-            if (entityType == null)
-                throw new ArgumentNullException(nameof(entityType));
-            return typeof(IShardingDataSource).IsAssignableFrom(entityType);
-        }
+        ///// <summary>
+        ///// 是否基继承至IShardingDataSource
+        ///// </summary>
+        ///// <param name="entityType"></param>
+        ///// <returns></returns>
+        //public static bool IsShardingDataSource(this Type entityType)
+        //{
+        //    if (entityType == null)
+        //        throw new ArgumentNullException(nameof(entityType));
+        //    return typeof(IShardingDataSource).IsAssignableFrom(entityType);
+        //}
+
+        ///// <summary>
+        ///// 是否基继承至IShardingTable
+        ///// </summary>
+        ///// <param name="entityType"></param>
+        ///// <returns></returns>
+        //public static bool IsShardingTable(this Type entityType)
+        //{
+        //    if (entityType == null)
+        //        throw new ArgumentNullException(nameof(entityType));
+        //    return typeof(IShardingTable).IsAssignableFrom(entityType);
+        //}
 
         /// <summary>
-        /// 是否基继承至IShardingDataSource
+        /// 是否分表
         /// </summary>
-        /// <param name="entity"></param>
+        /// <param name="metadata"></param>
         /// <returns></returns>
-        public static bool IsShardingDataSource(this object entity)
+        public static bool IsShardingDataSource(this EntityMetadata metadata)
         {
-            if (entity == null)
-                throw new ArgumentNullException(nameof(entity));
-            return entity is IShardingDataSource;
+            if (metadata == null)
+                throw new ArgumentNullException(nameof(metadata));
+            return metadata.IsMultiDataSourceMapping;
         }
         /// <summary>
-        /// 是否基继承至IShardingTable
+        /// 是否是分表
         /// </summary>
-        /// <param name="entityType"></param>
+        /// <param name="metadata"></param>
         /// <returns></returns>
-        public static bool IsShardingTable(this Type entityType)
+        public static bool IsShardingTable(this EntityMetadata metadata)
         {
-            if (entityType == null)
-                throw new ArgumentNullException(nameof(entityType));
-            return typeof(IShardingTable).IsAssignableFrom(entityType);
-        }
-
-        /// <summary>
-        /// 是否基继承至IShardingTable
-        /// </summary>
-        /// <param name="entity"></param>
-        /// <returns></returns>
-        public static bool IsShardingTable(this object entity)
-        {
-            if (entity == null)
-                throw new ArgumentNullException(nameof(entity));
-            return entity is IShardingTable;
+            if (metadata == null)
+                throw new ArgumentNullException(nameof(metadata));
+            return metadata.IsMultiTableMapping;
         }
 
 
 
-        public static string GetTableTail<TEntity>(this IVirtualTableManager virtualTableManager,
-            TEntity entity) where TEntity : class
+        public static string GetTableTail<TEntity>(this ITableRouteManager tableRouteManager,string dataSourceName,
+            TEntity entity,Type realEntityType) where TEntity : class
         {
-            if (!entity.IsShardingTable())
-                return string.Empty;
-            var physicTable = virtualTableManager.GetVirtualTable(entity.GetType()).RouteTo(new ShardingTableRouteConfig(null, entity as IShardingTable, null))[0];
-            return physicTable.Tail;
+            var shardingRouteUnit = tableRouteManager.RouteTo(realEntityType,dataSourceName,new ShardingTableRouteConfig(shardingTable: entity))[0];
+            return shardingRouteUnit.Tail;
+        }
+        public static string GetTableTail<TEntity>(this ITableRouteManager tableRouteManager,string dataSourceName,
+            object shardingKeyValue,Type realEntityType) where TEntity : class
+        {
+            var shardingRouteUnit = tableRouteManager.RouteTo(realEntityType,dataSourceName,new ShardingTableRouteConfig(shardingKeyValue: shardingKeyValue))[0];
+            return shardingRouteUnit.Tail;
         }
         public static bool IsVirtualDataSourceRoute(this Type routeType)
         {

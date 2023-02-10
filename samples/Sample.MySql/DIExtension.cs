@@ -1,31 +1,24 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Sample.MySql.DbContexts;
 using Sample.MySql.Domain.Entities;
-using ShardingCore;
-using ShardingCore.DbContexts.VirtualDbContexts;
-using ShardingCore.Extensions;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.EntityFrameworkCore.Internal;
+using Sample.MySql.multi;
+using ShardingCore.Bootstrappers;
 
 namespace Sample.MySql
 {
-/*
-* @Author: xjm
-* @Description:
-* @Date: Tuesday, 26 January 2021 12:29:04
-* @Email: 326308290@qq.com
-*/
+    /*
+    * @Author: xjm
+    * @Description:
+    * @Date: Tuesday, 26 January 2021 12:29:04
+    * @Email: 326308290@qq.com
+    */
     public static class DIExtension
     {
-        public static IApplicationBuilder UseShardingCore(this IApplicationBuilder app)
-        {
-            var shardingBootstrapper = app.ApplicationServices.GetRequiredService<IShardingBootstrapper>();
-            shardingBootstrapper.Start();
-            return app;
-        }
-
         public static void DbSeed(this IApplicationBuilder app)
         {
             using (var scope=app.ApplicationServices.CreateScope())
@@ -41,24 +34,68 @@ namespace Sample.MySql
                         {
                             Id = id.ToString(),
                             Age = id,
-                            Name = $"name_{id}",
+                            Name = $"ds{(id%3)}",
                         });
                     }
                     var userModMonths = new List<SysUserLogByMonth>();
+                    var begin = new DateTime(2021, 1, 01);
                     foreach (var id in ids)
                     {
                         userModMonths.Add(new SysUserLogByMonth()
                         {
                             Id = id.ToString(),
-                            Time = DateTime.Now
+                            Time = begin.AddHours(id*12)
                         });
                     }
 
                     virtualDbContext.AddRange(userMods);
                     virtualDbContext.AddRange(userModMonths);
                     virtualDbContext.SaveChanges();
+
                 }
             }
+            
+            // using (var scope=app.ApplicationServices.CreateScope())
+            // {
+            //   
+            //     var virtualDbContext =scope.ServiceProvider.GetService<DefaultShardingDbContext>();
+            //     var any = virtualDbContext.Set<SysUserMod>().Any();
+            // }
+            //using (var scope = app.ApplicationServices.CreateScope())
+            //{
+            //    var dbContext = scope.ServiceProvider.GetService<DefaultShardingDbContext>();
+            //    var queryable = from sum in dbContext.Set<SysUserMod>()
+            //        join st in dbContext.Set<SysTest>().Where(p =>  p.UserId == "admin")
+            //        on sum.Id equals st.Id
+            //        select new
+            //        {
+            //            st.UserId,
+            //            sum.Name
+            //        };
+            //    var result =  queryable.ToList();
+
+            //    Console.WriteLine(result.Count);
+            //}
+
+            //using (var scope = app.ApplicationServices.CreateScope())
+            //{
+            //    var dbContext = scope.ServiceProvider.GetService<DefaultShardingDbContext>();
+
+            //    var queryable = from sum in dbContext.Set<SysUserMod>()
+            //        from st in dbContext.Set<SysTest>().Where(p => p.Id == sum.Id && p.UserId == "admin")
+            //        select new
+            //        {
+            //            st.UserId,
+            //            sum.Name
+            //        };
+            //    var result =  queryable.ToList();
+
+            //    Console.WriteLine(result.Count);
+            //}
+
+
+
+
         }
     }
 }

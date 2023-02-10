@@ -24,8 +24,8 @@ namespace ShardingCore.Extensions
         /// <typeparam name="TEntity"></typeparam>
         /// <param name="shardingRouteContext"></param>
         /// <param name="tails"></param>
-        /// <returns>任何一个tails被添加成功就返回成功</returns>
-        public static bool TryCreateOrAddMustTail<TEntity>(this ShardingRouteContext shardingRouteContext, params string[] tails) where TEntity : class, IShardingTable
+        /// <returns>any tail add success return true</returns>
+        public static bool TryCreateOrAddMustTail<TEntity>(this ShardingRouteContext shardingRouteContext, params string[] tails) where TEntity : class
         {
             return TryCreateOrAddMustTail(shardingRouteContext, typeof(TEntity), tails);
         }
@@ -35,7 +35,7 @@ namespace ShardingCore.Extensions
         /// <param name="shardingRouteContext"></param>
         /// <param name="entityType"></param>
         /// <param name="tails"></param>
-        /// <returns>任何一个tails被添加成功就返回成功</returns>
+        /// <returns>any tail add success return true</returns>
         public static bool TryCreateOrAddMustTail(this ShardingRouteContext shardingRouteContext, Type entityType, params string[] tails)
         {
             if (shardingRouteContext == null)
@@ -45,15 +45,13 @@ namespace ShardingCore.Extensions
 
             if (tails.IsEmpty())
                 return false;
-            if (!entityType.IsShardingTable())
-                throw new ShardingCoreException($"sharding route entity type :{entityType.FullName} must impl {nameof(IShardingTable)}");
             if (!shardingRouteContext.MustTable.TryGetValue(entityType,out HashSet<string> mustTails))
             {
                 mustTails = new HashSet<string>();
                 shardingRouteContext.MustTable.Add(entityType, mustTails);
             }
 
-            return tails.Select(o => mustTails.Add(o)).Any(o => o);
+            return tails.Select(o => mustTails.Add(o)).All(o => o);
         }
         /// <summary>
         /// 创建或者添加提示路由
@@ -61,8 +59,8 @@ namespace ShardingCore.Extensions
         /// <typeparam name="TEntity"></typeparam>
         /// <param name="shardingRouteContext"></param>
         /// <param name="tails"></param>
-        /// <returns>任何一个tails被添加成功就返回成功</returns>
-        public static bool TryCreateOrAddHintTail<TEntity>(this ShardingRouteContext shardingRouteContext, params string[] tails) where TEntity : class, IShardingTable
+        /// <returns>any tail add success return true</returns>
+        public static bool TryCreateOrAddHintTail<TEntity>(this ShardingRouteContext shardingRouteContext, params string[] tails) where TEntity : class
         {
             return TryCreateOrAddHintTail(shardingRouteContext, typeof(TEntity), tails);
         }
@@ -72,7 +70,7 @@ namespace ShardingCore.Extensions
         /// <param name="shardingRouteContext"></param>
         /// <param name="entityType"></param>
         /// <param name="tails"></param>
-        /// <returns>任何一个tails被添加成功就返回成功</returns>
+        /// <returns>any tail add success return true</returns>
         public static bool TryCreateOrAddHintTail(this ShardingRouteContext shardingRouteContext, Type entityType, params string[] tails)
         {
             if (shardingRouteContext == null)
@@ -82,15 +80,13 @@ namespace ShardingCore.Extensions
 
             if (tails.IsEmpty())
                 return false;
-            if (!entityType.IsShardingTable())
-                throw new ShardingCoreException($"sharding route entity type :{entityType.FullName} must impl {nameof(IShardingTable)}");
             if (!shardingRouteContext.HintTable.TryGetValue(entityType, out HashSet<string> hintTails))
             {
                 hintTails = new HashSet<string>();
                 shardingRouteContext.HintTable.Add(entityType, hintTails);
             }
 
-            return tails.Select(o => hintTails.Add(o)).Any(o => o);
+            return tails.Select(o => hintTails.Add(o)).All(o => o);
         }
         /// <summary>
         /// 创建或者添加断言
@@ -99,7 +95,7 @@ namespace ShardingCore.Extensions
         /// <param name="shardingRouteContext"></param>
         /// <param name="tails"></param>
         /// <returns></returns>
-        public static bool TryCreateOrAddAssertTail<TEntity>(this ShardingRouteContext shardingRouteContext, params ITableRouteAssert<TEntity>[] tails) where TEntity : class, IShardingTable
+        public static bool TryCreateOrAddAssertTail<TEntity>(this ShardingRouteContext shardingRouteContext, params ITableRouteAssert<TEntity>[] tails) where TEntity : class
         {
             return TryCreateOrAddAssertTail(shardingRouteContext, typeof(TEntity), tails);
         }
@@ -112,8 +108,6 @@ namespace ShardingCore.Extensions
 
             if (asserts.IsEmpty())
                 return false;
-            if (!entityType.IsShardingTable())
-                throw new ShardingCoreException($"sharding route entity type :{entityType.FullName} must impl {nameof(IShardingTable)}");
             if (!shardingRouteContext.AssertTable.TryGetValue(entityType, out LinkedList<ITableRouteAssert> routeAsserts))
             {
                 routeAsserts = new LinkedList<ITableRouteAssert>();
@@ -129,7 +123,7 @@ namespace ShardingCore.Extensions
 
 
 
-        public static bool TryGetMustTail<TEntity>(this ShardingRouteContext shardingRouteContext, out HashSet<string> tail) where TEntity  : class,IShardingTable
+        public static bool TryGetMustTail<TEntity>(this ShardingRouteContext shardingRouteContext, out HashSet<string> tail) where TEntity  : class
         {
             return TryGetMustTail(shardingRouteContext,typeof(TEntity),out tail);
         }
@@ -140,8 +134,6 @@ namespace ShardingCore.Extensions
                 tail = null;
                 return false;
             }
-            if (!entityType.IsShardingTable())
-                throw new ShardingCoreException($"sharding route entity type :{entityType.FullName} must impl {nameof(IShardingTable)}");
             if (!shardingRouteContext.MustTable.ContainsKey(entityType))
             {
                 tail = null;
@@ -151,7 +143,7 @@ namespace ShardingCore.Extensions
             tail = shardingRouteContext.MustTable[entityType];
             return true;
         }
-        public static bool TryGetHintTail<TEntity>(this ShardingRouteContext shardingRouteContext, out HashSet<string> tail) where TEntity  : class,IShardingTable
+        public static bool TryGetHintTail<TEntity>(this ShardingRouteContext shardingRouteContext, out HashSet<string> tail) where TEntity  : class
         {
             return TryGetHintTail(shardingRouteContext,typeof(TEntity),out tail);
         }
@@ -162,8 +154,6 @@ namespace ShardingCore.Extensions
                 tail = null;
                 return false;
             }
-            if (!entityType.IsShardingTable())
-                throw new ShardingCoreException($"sharding route entity type :{entityType.FullName} must impl {nameof(IShardingTable)}");
             if (!shardingRouteContext.HintTable.ContainsKey(entityType))
             {
                 tail = null;
@@ -174,7 +164,7 @@ namespace ShardingCore.Extensions
             return true;
         }
 
-        public static bool TryGetAssertTail<TEntity>(this ShardingRouteContext shardingRouteContext, out ICollection<ITableRouteAssert> tail)where TEntity  : class,IShardingTable
+        public static bool TryGetAssertTail<TEntity>(this ShardingRouteContext shardingRouteContext, out ICollection<ITableRouteAssert> tail)where TEntity  : class
         {
             return TryGetAssertTail(shardingRouteContext,typeof(TEntity), out tail);
         }
@@ -185,8 +175,6 @@ namespace ShardingCore.Extensions
                 tail = null;
                 return false;
             }
-            if (!entityType.IsShardingTable())
-                throw new ShardingCoreException($"sharding route entity type :{entityType.FullName} must impl {nameof(IShardingTable)}");
             if (!shardingRouteContext.AssertTable.ContainsKey(entityType))
             {
                 tail = null;

@@ -1,16 +1,20 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using Microsoft.EntityFrameworkCore.Query;
 using ShardingCore.Core;
+using ShardingCore.Core.EntityMetadatas;
 using ShardingCore.Core.Internal;
 using ShardingCore.Core.Internal.Visitors;
-using ShardingCore.Core.Internal.Visitors.Querys;
+using ShardingCore.Core.TrackerManagers;
 using ShardingCore.Core.VirtualDatabase;
 using ShardingCore.Core.VirtualRoutes;
 using ShardingCore.Extensions;
+using ShardingCore.Sharding.Visitors.Querys;
 
 namespace ShardingCore.Utils
 {
@@ -22,119 +26,22 @@ namespace ShardingCore.Utils
 */
     public class ShardingUtil
     {
-        private static readonly ConcurrentDictionary<Type, ShardingEntityConfig> _caches = new ConcurrentDictionary<Type, ShardingEntityConfig>();
-
-        private ShardingUtil()
-        {
-        }
-
-        public static ShardingEntityConfig Parse(Type entityType)
-        {
-            var isShardingTable = entityType.IsShardingTable();
-            var isShardingDataSource = entityType.IsShardingDataSource();
-            if (!isShardingTable && !isShardingDataSource)
-                throw new InvalidOperationException(
-                    $"{entityType.FullName} is not impl {nameof(IShardingDataSource)} or {nameof(IShardingTable)}");
-            if (_caches.TryGetValue(entityType, out var entityConfig))
-            {
-                return entityConfig;
-            }
-
-            entityConfig = new ShardingEntityConfig()
-            {
-                EntityType = entityType,
-                IsMultiDataSourceMapping = isShardingDataSource,
-                IsMultiTableMapping = isShardingTable
-            };
-
-
-            PropertyInfo[] shardingProperties = entityType.GetProperties();
-            
-
-            var shardingDataSourceCount = 0;
-            var shardingTableCount = 0;
-            foreach (var shardingProperty in shardingProperties)
-            {
-                var attributes = shardingProperty.GetCustomAttributes(true);
-                if (isShardingDataSource)
-                {
-                    if (attributes.FirstOrDefault(x => x.GetType() == typeof(ShardingDataSourceKeyAttribute)) is ShardingDataSourceKeyAttribute shardingDataSourceKey)
-                    {
-                        if (shardingDataSourceCount > 1)
-                            throw new NotSupportedException($"{entityType}  impl {nameof(IShardingDataSource)} should use single attribute [{nameof(ShardingDataSourceKeyAttribute)}]");
-
-                        entityConfig.ShardingDataSourceField = shardingProperty.Name;
-                        entityConfig.AutoCreateDataSourceTable = shardingDataSourceKey.AutoCreateDataSourceTableOnStart == ShardingKeyAutoCreateTableEnum.UnKnown ? (bool?)null : (shardingDataSourceKey.AutoCreateDataSourceTableOnStart == ShardingKeyAutoCreateTableEnum.Create);
-                        shardingDataSourceCount++;
-                    }
-                }
-
-                if (isShardingTable)
-                {
-                    if (attributes.FirstOrDefault(x => x.GetType() == typeof(ShardingTableKeyAttribute)) is ShardingTableKeyAttribute shardingKey)
-                    {
-                        if (shardingTableCount > 1)
-                            throw new NotSupportedException($"{entityType}  impl {nameof(IShardingTable)}  should use single attribute [{nameof(ShardingTableKeyAttribute)}]");
-
-                        entityConfig.ShardingTableField = shardingProperty.Name;
-                        entityConfig.AutoCreateTable = shardingKey.AutoCreateTableOnStart == ShardingKeyAutoCreateTableEnum.UnKnown ? (bool?) null : (shardingKey.AutoCreateTableOnStart == ShardingKeyAutoCreateTableEnum.Create);
-                        entityConfig.TailPrefix = shardingKey.TailPrefix;
-                        shardingTableCount++;
-                    }
-                }
-            }
-
-            _caches.TryAdd(entityType, entityConfig);
-
-            return entityConfig;
-        }
-        
         /// <summary>
-        /// ∑÷ø‚¬∑”…π˝¬À
+        /// Ëé∑ÂèñË°®ËææÂºèË∑ØÁî±
         /// </summary>
-        /// <typeparam name="TKey"></typeparam>
         /// <param name="queryable"></param>
-        /// <param name="shardingEntityBaseType"></param>
-        /// <param name="shardingKeyConvert"></param>
+        /// <param name="entityMetadata"></param>
         /// <param name="keyToTailExpression"></param>
+        /// <param name="shardingTableRoute">sharding table or data source</param>
         /// <returns></returns>
-        public static Func<string, bool> GetRouteDataSourceFilter<TKey>(IQueryable queryable, ShardingEntityConfig shardingEntityBaseType, Func<object, TKey> shardingKeyConvert, Func<TKey, ShardingOperatorEnum, Expression<Func<string, bool>>> keyToTailExpression)
+        public static RoutePredicateExpression GetRouteParseExpression(IQueryable queryable, EntityMetadata entityMetadata, Func<object, ShardingOperatorEnum,string, Func<string, bool>> keyToTailExpression,bool shardingTableRoute)
         {
-            QueryableRouteShardingDataSourceDiscoverVisitor<TKey> visitor = new QueryableRouteShardingDataSourceDiscoverVisitor<TKey>(shardingEntityBaseType, shardingKeyConvert, keyToTailExpression);
+
+            QueryableRouteShardingTableDiscoverVisitor visitor = new QueryableRouteShardingTableDiscoverVisitor(entityMetadata, keyToTailExpression, shardingTableRoute);
 
             visitor.Visit(queryable.Expression);
 
-            return visitor.GetDataSourceFilter();
-        }
-        /// <summary>
-        /// ∑÷±Ì¬∑”…π˝¬À
-        /// </summary>
-        /// <typeparam name="TKey"></typeparam>
-        /// <param name="queryable"></param>
-        /// <param name="shardingConfig"></param>
-        /// <param name="shardingKeyConvert"></param>
-        /// <param name="keyToTailExpression"></param>
-        /// <returns></returns>
-        public static Func<string, bool> GetRouteShardingTableFilter<TKey>(IQueryable queryable, ShardingEntityConfig shardingConfig, Func<object, TKey> shardingKeyConvert, Func<TKey, ShardingOperatorEnum, Expression<Func<string, bool>>> keyToTailExpression)
-        {
-            QueryableRouteShardingTableDiscoverVisitor<TKey> visitor = new QueryableRouteShardingTableDiscoverVisitor<TKey>(shardingConfig, shardingKeyConvert, keyToTailExpression);
-
-            visitor.Visit(queryable.Expression);
-
-            return visitor.GetStringFilterTail();
-        }
-        /// <summary>
-        /// ªÒ»°±æ¥Œ≤È—ØµƒÀ˘”–…Êº∞µΩµƒ∂‘œÛ
-        /// </summary>
-        /// <param name="queryable"></param>
-        /// <returns></returns>
-        public static ISet<Type> GetQueryEntitiesFilter(IQueryable queryable)
-        {
-            QueryEntitiesVisitor visitor = new QueryEntitiesVisitor();
-
-            visitor.Visit(queryable.Expression);
-
-            return visitor.GetQueryEntities();
+            return visitor.GetRouteParseExpression();
         }
 
     }

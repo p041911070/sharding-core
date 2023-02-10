@@ -13,6 +13,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Sample.Migrations.EFCores;
 using ShardingCore;
+using ShardingCore.Bootstrappers;
+using ShardingCore.Core.RuntimeContexts;
+using ShardingCore.Core.VirtualDatabase.VirtualDataSources.Abstractions;
 
 namespace Sample.Migrations
 {
@@ -28,28 +31,40 @@ namespace Sample.Migrations
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-
             services.AddControllers();
 
-            services.AddShardingDbContext<DefaultShardingTableDbContext>(
-                    (conn, o) =>
-                        o.UseSqlServer(conn)
-                            .ReplaceService<IMigrationsSqlGenerator,ShardingSqlServerMigrationsSqlGenerator<DefaultShardingTableDbContext>>()
-                ).Begin(o =>
-                {
-                    o.CreateShardingTableOnStart = false;
-                    o.EnsureCreatedWithOutShardingTable = false;
-                    o.AutoTrackEntity = true;
-                })
-                .AddShardingTransaction((connection, builder) =>
-                    builder.UseSqlServer(connection))
-                .AddDefaultDataSource("ds0",
-                    "Data Source=localhost;Initial Catalog=ShardingCoreDBMigration;Integrated Security=True;")
-                .AddShardingTableRoute(o =>
-                {
-                    o.AddShardingTableRoute<ShardingWithModVirtualTableRoute>();
-                    o.AddShardingTableRoute<ShardingWithDateTimeVirtualTableRoute>();
-                }).End();
+            //services.AddDbContext<DefaultShardingTableDbContext>((sp, builder) =>
+            //{
+            //    var virtualDataSource =
+            //        sp.GetRequiredService<IVirtualDataSourceManager<DefaultShardingTableDbContext>>()
+            //            .GetCurrentVirtualDataSource();
+            //    var connectionString = virtualDataSource.GetConnectionString(virtualDataSource.DefaultDataSourceName);
+            //    virtualDataSource.ConfigurationParams.UseDbContextOptionsBuilder(connectionString, builder)
+            //        .UseSharding<DefaultShardingTableDbContext>();
+            //});
+
+
+            //services.AddShardingConfigure<DefaultShardingTableDbContext>().ShardingEntityConfigOptions...
+
+            //services.AddShardingDbContext<DefaultShardingTableDbContext>(
+            //        (conn, o) =>
+            //            o.UseSqlServer(conn)
+            //                .ReplaceService<IMigrationsSqlGenerator,ShardingSqlServerMigrationsSqlGenerator<DefaultShardingTableDbContext>>()
+            //    ).Begin(o =>
+            //    {
+            //        o.CreateShardingTableOnStart = false;
+            //        o.EnsureCreatedWithOutShardingTable = false;
+            //        o.AutoTrackEntity = true;
+            //    })
+            //    .AddShardingTransaction((connection, builder) =>
+            //        builder.UseSqlServer(connection))
+            //    .AddDefaultDataSource("ds0",
+            //        "Data Source=localhost;Initial Catalog=ShardingCoreDBMigration;Integrated Security=True;")
+            //    .AddShardingTableRoute(o =>
+            //    {
+            //        o.AddShardingTableRoute<ShardingWithModVirtualTableRoute>();
+            //        o.AddShardingTableRoute<ShardingWithDateTimeVirtualTableRoute>();
+            //    }).End();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -60,8 +75,8 @@ namespace Sample.Migrations
                 app.UseDeveloperExceptionPage();
             }
 
-            var shardingBootstrapper = app.ApplicationServices.GetRequiredService<IShardingBootstrapper>();
-            shardingBootstrapper.Start();
+            //var shardingBootstrapper = app.ApplicationServices.GetRequiredService<IShardingBootstrapper>();
+            //shardingBootstrapper.Start();
 
             app.UseRouting();
 

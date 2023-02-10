@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using ShardingCore.Exceptions;
 using ShardingCore.Extensions;
 using ShardingCore.Sharding.Abstractions;
 using ShardingCore.Sharding.ReadWriteConfigurations.Abstractions;
@@ -19,32 +20,22 @@ namespace ShardingCore.Sharding.ReadWriteConfigurations
     */
     public class ShardingReadWriteManager:IShardingReadWriteManager
     {
-        private readonly ConcurrentDictionary<Type, IShardingReadWriteAccessor> _shardingReadWriteAccessors;
+        private readonly IShardingReadWriteAccessor _shardingReadWriteAccessor;
 
 
-        public ShardingReadWriteManager(IEnumerable<IShardingReadWriteAccessor> shardingReadWriteAccessors)
+        public ShardingReadWriteManager(IShardingReadWriteAccessor shardingReadWriteAccessor)
         {
-
-            _shardingReadWriteAccessors = new ConcurrentDictionary<Type, IShardingReadWriteAccessor>(shardingReadWriteAccessors.ToDictionary(o => o.ShardingDbContextType, o => o));
-        }
-        public ShardingReadWriteContext GetCurrent<TShardingDbContext>() where TShardingDbContext : DbContext, IShardingDbContext
-        {
-            return GetCurrent(typeof(TShardingDbContext));
+            _shardingReadWriteAccessor = shardingReadWriteAccessor;
         }
 
-        public ShardingReadWriteContext GetCurrent(Type shardingDbContextType)
+        public ShardingReadWriteContext GetCurrent()
         {
-            if (!shardingDbContextType.IsShardingDbContext())
-                throw new InvalidOperationException(shardingDbContextType.FullName);
-
-            if (_shardingReadWriteAccessors.TryGetValue(shardingDbContextType, out var accessor))
-                return accessor.ShardingReadWriteContext;
-            throw new InvalidOperationException(shardingDbContextType.FullName);
+                return _shardingReadWriteAccessor.ShardingReadWriteContext;
         }
 
-        public ShardingReadWriteScope<TShardingDbContext> CreateScope<TShardingDbContext>() where TShardingDbContext : DbContext, IShardingDbContext
+        public ShardingReadWriteScope CreateScope()
         {
-            var shardingPageScope = new ShardingReadWriteScope<TShardingDbContext>(_shardingReadWriteAccessors.Select(o => o.Value));
+            var shardingPageScope = new ShardingReadWriteScope(_shardingReadWriteAccessor);
             shardingPageScope.ShardingReadWriteAccessor.ShardingReadWriteContext = ShardingReadWriteContext.Create();
             return shardingPageScope;
         }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ShardingCore.Core
 {
@@ -10,9 +11,10 @@ namespace ShardingCore.Core
 */
     public class Check
     {
+        [ExcludeFromCodeCoverage]
         private Check(){}
         /// <summary>
-        /// 
+        /// 不能为空
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="value"></param>
@@ -24,6 +26,20 @@ namespace ShardingCore.Core
                 throw new ArgumentNullException(parameterName);
 
             return value;
-        } 
+        }
+        /// <summary>
+        /// 应该为空
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="value"></param>
+        /// <param name="parameterName"></param>
+        /// <returns></returns>
+        public static T ShouldNull<T>(T value, string parameterName)
+        {
+            if (value != null)
+                throw new ArgumentNullException(parameterName);
+
+            return value;
+        }
     }
 }

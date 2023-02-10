@@ -1,20 +1,29 @@
+using Microsoft.EntityFrameworkCore;
+using ShardingCore.Core;
+using ShardingCore.Core.ShardingConfigurations.Abstractions;
+using ShardingCore.Core.TrackerManagers;
+using ShardingCore.Core.VirtualRoutes.DataSourceRoutes.RouteRuleEngine;
+using ShardingCore.Core.VirtualRoutes.TableRoutes.RouteTails.Abstractions;
+using ShardingCore.Core.VirtualRoutes.TableRoutes.RoutingRuleEngine;
+using ShardingCore.Exceptions;
+using ShardingCore.Extensions;
+using ShardingCore.Extensions.InternalExtensions;
+using ShardingCore.Sharding.Abstractions;
+using ShardingCore.Sharding.MergeContexts;
+using ShardingCore.Sharding.ShardingComparision.Abstractions;
+using ShardingCore.Sharding.ShardingExecutors.Abstractions;
 using System;
 using System.Collections.Concurrent;
-using Microsoft.EntityFrameworkCore;
-using ShardingCore.Core.Internal.StreamMerge.ReWrite;
-using ShardingCore.Core.Internal.Visitors;
-using ShardingCore.Core.Internal.Visitors.GroupBys;
-using ShardingCore.Core.Internal.Visitors.Selects;
-using ShardingCore.Core.VirtualRoutes.TableRoutes.RoutingRuleEngine;
-using ShardingCore.Sharding.Abstractions;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using ShardingCore.Core.TrackerManagers;
-using ShardingCore.Core.VirtualDatabase.VirtualTables;
-using ShardingCore.Core.VirtualRoutes.DataSourceRoutes.RouteRuleEngine;
-using ShardingCore.Core.VirtualRoutes.TableRoutes.RouteTails.Abstractions;
-using ShardingCore.Extensions;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using ShardingCore.Core.RuntimeContexts;
+using ShardingCore.Core.ShardingConfigurations;
+using ShardingCore.Core.VirtualRoutes;
+using ShardingCore.Sharding.Enumerators;
+using ShardingCore.Sharding.MergeEngines.Common.Abstractions;
+using ShardingCore.Sharding.ShardingExecutors;
 
 
 namespace ShardingCore.Sharding
@@ -25,95 +34,77 @@ namespace ShardingCore.Sharding
     * @Date: Monday, 25 January 2021 11:38:27
     * @Email: 326308290@qq.com
     */
-    public class StreamMergeContext<T>:IDisposable
+    public class StreamMergeContext : IMergeParseContext, IDisposable, IPrint
 #if !EFCORE2
-        ,IAsyncDisposable
+        , IAsyncDisposable
 #endif
     {
-        //private readonly IShardingScopeFactory _shardingScopeFactory;
-        private readonly IQueryable<T> _source;
-        private readonly IShardingDbContext _shardingDbContext;
+        public IMergeQueryCompilerContext MergeQueryCompilerContext { get; }
+        public IShardingRuntimeContext ShardingRuntimeContext { get; }
+        public IParseResult ParseResult { get; }
+        public IQueryable RewriteQueryable { get; }
+        public IOptimizeResult OptimizeResult { get; }
+
+        private readonly IRewriteResult _rewriteResult;
         private readonly IRouteTailFactory _routeTailFactory;
 
-        private readonly IQueryable<T> _reWriteSource;
-        //public IEnumerable<TableRouteResult> RouteResults { get; }
-        //public DataSourceRouteResult RoutingResult { get; }
         public int? Skip { get; private set; }
-        public int? Take { get; }
-        public IEnumerable<PropertyOrder> Orders { get; private set; }
+        public int? Take { get; private set; }
+        public PropertyOrder[] Orders { get; private set; }
 
-        public SelectContext SelectContext { get; }
-        public GroupByContext GroupByContext { get; }
-        public IEnumerable<TableRouteResult> TableRouteResults { get; }
-        public DataSourceRouteResult DataSourceRouteResult { get; }
+        public SelectContext SelectContext => ParseResult.GetSelectContext();
+        public GroupByContext GroupByContext => ParseResult.GetGroupByContext();
+        public ShardingRouteResult ShardingRouteResult => MergeQueryCompilerContext.GetShardingRouteResult();
+
         /// <summary>
-        /// ±¾´Î²éÑ¯Éæ¼°µÄ¶ÔÏó
+        /// æœ¬æ¬¡æŸ¥è¯¢æ¶‰åŠçš„å¯¹è±¡
         /// </summary>
         public ISet<Type> QueryEntities { get; }
+
+
         /// <summary>
-        /// ±¾´Î²éÑ¯ÊÇ·ñ°üº¬notracking
+        /// æœ¬æ¬¡æŸ¥è¯¢è·¨åº“
         /// </summary>
-        public bool? IsNoTracking { get; }
+        public bool IsCrossDataSource => MergeQueryCompilerContext.IsCrossDataSource();
+
         /// <summary>
-        /// ±¾´Î²éÑ¯¿ç¿â
+        /// æœ¬æ¬¡æŸ¥è¯¢è·¨è¡¨
         /// </summary>
-        public bool IsCrossDataSource { get; }
-        /// <summary>
-        /// ±¾´Î²éÑ¯¿ç±í
-        /// </summary>
-        public bool IsCrossTable { get; }
+        public bool IsCrossTable => MergeQueryCompilerContext.IsCrossTable();
 
         private readonly ITrackerManager _trackerManager;
-        private readonly IShardingConfigOption _shardingConfigOption;
+        private readonly ShardingConfigOptions _shardingConfigOptions;
 
-        private readonly ConcurrentDictionary<DbContext, object> _parallelDbContexts; 
+        private readonly ConcurrentDictionary<DbContext, object> _parallelDbContexts;
 
-        public StreamMergeContext(IQueryable<T> source, IShardingDbContext shardingDbContext,
-            DataSourceRouteResult dataSourceRouteResult,
-            IEnumerable<TableRouteResult> tableRouteResults,
-            IRouteTailFactory routeTailFactory)
+        public IComparer<string> ShardingTailComparer => OptimizeResult.ShardingTailComparer();
+
+        /// <summary>
+        /// åˆ†è¡¨åç¼€æ¯”è¾ƒæ˜¯å¦é‡æ’æ­£åº
+        /// </summary>
+        public bool TailComparerNeedReverse => OptimizeResult.SameWithTailComparer();
+
+
+        public StreamMergeContext(IMergeQueryCompilerContext mergeQueryCompilerContext, IParseResult parseResult,
+            IRewriteResult rewriteResult, IOptimizeResult optimizeResult)
         {
-            //_shardingScopeFactory = shardingScopeFactory;
-            _source = source;
-            _shardingDbContext = shardingDbContext;
-            _routeTailFactory = routeTailFactory;
-            var reWriteResult = new ReWriteEngine<T>(source).ReWrite();
-            Skip = reWriteResult.Skip;
-            Take = reWriteResult.Take;
-            Orders = reWriteResult.Orders ?? Enumerable.Empty<PropertyOrder>();
-            IsNoTracking = _source.GetIsNoTracking();
-            SelectContext = reWriteResult.SelectContext;
-            GroupByContext = reWriteResult.GroupByContext;
-            _reWriteSource = reWriteResult.ReWriteQueryable;
-            QueryEntities = source.ParseQueryableRoute();
-            DataSourceRouteResult = dataSourceRouteResult;
-            TableRouteResults = tableRouteResults;
-            IsCrossDataSource = dataSourceRouteResult.IntersectDataSources.Count > 1;
-            IsCrossTable = tableRouteResults.Count() > 1;
-            _trackerManager =
-                (ITrackerManager)ShardingContainer.GetService(
-                    typeof(ITrackerManager<>).GetGenericType0(shardingDbContext.GetType()));
-            _shardingConfigOption = ShardingContainer.GetServices<IShardingConfigOption>()
-                .FirstOrDefault(o => o.ShardingDbContextType == shardingDbContext.GetType());
-            _parallelDbContexts = new ConcurrentDictionary<DbContext, object>();
-            //RouteResults = _tableTableRouteRuleEngineFactory.Route(_shardingDbContext.ShardingDbContextType, _source);
+            MergeQueryCompilerContext = mergeQueryCompilerContext;
+            ParseResult = parseResult;
+            RewriteQueryable = rewriteResult.GetRewriteQueryable();
+            OptimizeResult = optimizeResult;
+            _rewriteResult = rewriteResult;
+            ShardingRuntimeContext = ((DbContext)mergeQueryCompilerContext.GetShardingDbContext()).GetShardingRuntimeContext();
+            _routeTailFactory = ShardingRuntimeContext.GetRouteTailFactory();
+            _trackerManager = ShardingRuntimeContext.GetTrackerManager();
+            _shardingConfigOptions = ShardingRuntimeContext.GetShardingConfigOptions();
+            QueryEntities = MergeQueryCompilerContext.GetQueryEntities().Keys.ToHashSet();
+            _parallelDbContexts = new ConcurrentDictionary<DbContext, object>(Environment.ProcessorCount,mergeQueryCompilerContext.GetShardingRouteResult().RouteUnits.Count);
+            Orders = parseResult.GetOrderByContext().PropertyOrders.ToArray();
+            Skip = parseResult.GetPaginationContext().Skip;
+            Take = parseResult.GetPaginationContext().Take;
         }
-        //public StreamMergeContext(IQueryable<T> source,IEnumerable<TableRouteResult> routeResults,
-        //    IShardingParallelDbContextFactory shardingParallelDbContextFactory,IShardingScopeFactory shardingScopeFactory)
-        //{
-        //    _shardingParallelDbContextFactory = shardingParallelDbContextFactory;
-        //    _shardingScopeFactory = shardingScopeFactory;
-        //    _source = source;
-        //    RouteResults = routeResults;
-        //    var reWriteResult = new ReWriteEngine<T>(source).ReWrite();
-        //    Skip = reWriteResult.Skip;
-        //    Take = reWriteResult.Take;
-        //    Orders = reWriteResult.Orders ?? Enumerable.Empty<PropertyOrder>();
-        //    SelectContext = reWriteResult.SelectContext;
-        //    GroupByContext = reWriteResult.GroupByContext;
-        //    _reWriteSource = reWriteResult.ReWriteQueryable;
-        //}
-        public void ReSetOrders(IEnumerable<PropertyOrder> orders)
+
+        public void ReSetOrders(PropertyOrder[] orders)
         {
             Orders = orders;
         }
@@ -122,47 +113,78 @@ namespace ShardingCore.Sharding
         {
             Skip = skip;
         }
-        /// <summary>
-        /// ´´½¨¶ÔÓ¦µÄdbcontext
-        /// </summary>
-        /// <param name="dataSourceName">data source name</param>
-        /// <param name="tableRouteResult"></param>
-        /// <returns></returns>
-        public DbContext CreateDbContext(string dataSourceName, TableRouteResult tableRouteResult)
+
+        public void ReSetTake(int? take)
         {
-            var routeTail = _routeTailFactory.Create(tableRouteResult);
-            //Èç¹û¿ªÆôÁË¶ÁĞ´·ÖÀë»òÕß±¾´Î²éÑ¯ÊÇ¿ç±í»òÕß¿ç¿âµÄ±íÊ¾±¾´Î²éÑ¯µÄdbcontextÊÇ²»´æ´¢µÄÓÃÍêºó¾ÍÖ±½Ódispose
-            var parallelQuery = IsParallelQuery();
-            var dbContext = _shardingDbContext.GetDbContext(dataSourceName, parallelQuery, routeTail);
-            if (parallelQuery)
-            {
-                _parallelDbContexts.TryAdd(dbContext, null);
-            }
+            Take = take;
+        }
+
+        /// <summary>
+        /// åˆ›å»ºå¯¹åº”çš„dbcontext
+        /// </summary>
+        /// <param name="sqlRouteUnit">æ•°æ®åº“è·¯ç”±æœ€å°å•å…ƒ</param>
+        /// <returns></returns>
+        public DbContext CreateDbContext(ISqlRouteUnit sqlRouteUnit)
+        {
+            var routeTail = _routeTailFactory.Create(sqlRouteUnit.TableRouteResult);
+
+            var dbContext = GetShardingDbContext().GetShardingExecutor().CreateDbContext(CreateDbContextStrategyEnum.IndependentConnectionQuery,sqlRouteUnit.DataSourceName, routeTail);
+            _parallelDbContexts.TryAdd(dbContext, null);
+
             return dbContext;
         }
 
-        public IRouteTail Create(TableRouteResult tableRouteResult)
+        /// <summary>
+        /// å› ä¸ºå¹¶å‘æŸ¥è¯¢æƒ…å†µä¸‹é‚£ä¹ˆä½ æ˜¯å†…å­˜å°±æ˜¯å†…å­˜ä½ æ˜¯æµå¼å°±æ˜¯æµå¼
+        /// å¦‚æœä¸æ˜¯å¹¶å‘æŸ¥è¯¢çš„æƒ…å†µä¸‹ç³»ç»Ÿä¼šå°†å½“å‰dbcontextè¿›è¡Œåˆ©ç”¨èµ·æ¥æ‰€ä»¥åªèƒ½æ˜¯æµå¼
+        /// </summary>
+        /// <param name="connectionMode"></param>
+        /// <returns></returns>
+        public ConnectionModeEnum RealConnectionMode(ConnectionModeEnum connectionMode)
         {
-            return _routeTailFactory.Create(tableRouteResult);
+            if (IsParallelQuery())
+            {
+                return connectionMode;
+            }
+            else
+            {
+                return ConnectionModeEnum.MEMORY_STRICTLY;
+            }
         }
 
-        public IQueryable<T> GetReWriteQueryable()
+        //public IRouteTail Create(TableRouteResult tableRouteResult)
+        //{
+        //    return _routeTailFactory.Create(tableRouteResult);
+        //}
+
+        public IQueryable GetReWriteQueryable()
         {
-            return _reWriteSource;
-        }
-        public IQueryable<T> GetOriginalQueryable()
-        {
-            return _source;
+            return RewriteQueryable;
         }
 
-        public bool HasSkipTake()
+        public IQueryable GetOriginalQueryable()
         {
-            return Skip.HasValue || Take.HasValue;
+            return MergeQueryCompilerContext.GetQueryCombineResult().GetCombineQueryable();
         }
 
+        public int? GetPaginationReWriteTake()
+        {
+            if (Take.HasValue)
+                return Skip.GetValueOrDefault() + Take.Value;
+            return default;
+        }
+        //public bool HasSkipTake()
+        //{
+        //    return Skip.HasValue || Take.HasValue;
+        //}
+
+        /// <summary>
+        /// ä»»æ„skipæˆ–è€…takeå¤§äº0é‚£ä¹ˆå°±è¯´æ˜æ˜¯åˆ†é¡µçš„æŸ¥è¯¢
+        /// </summary>
+        /// <returns></returns>
         public bool IsPaginationQuery()
         {
-            return Skip.GetValueOrDefault() > 0 || Take.GetValueOrDefault() > 0;
+            return Skip is > 0 || Take is > 0;
         }
 
 
@@ -170,76 +192,167 @@ namespace ShardingCore.Sharding
         {
             return this.GroupByContext.GroupExpression != null;
         }
-
-        public bool HasAggregateQuery()
-        {
-            return this.SelectContext.SelectProperties.Any(o => o.IsAggregateMethod);
-        }
-
-        public IShardingDbContext GetShardingDbContext()
-        {
-            return _shardingDbContext;
-        }
-
-        public int GetParallelQueryMaxThreadCount()
-        {
-            return _shardingConfigOption.ParallelQueryMaxThreadCount;
-        }
-        public TimeSpan GetParallelQueryTimeOut()
-        {
-            return _shardingConfigOption.ParallelQueryTimeOut;
-        }
         /// <summary>
-        /// ÊÇ·ñÊÇ¿ç×ÊÔ´²éÑ¯
+        /// group å†…å­˜æ’åº
         /// </summary>
         /// <returns></returns>
-        private bool IsCrossQuery()
+        public bool GroupQueryMemoryMerge()
+        {
+            return HasGroupQuery()&&this.GroupByContext.GroupMemoryMerge;
+        }
+
+        public bool IsMergeQuery()
         {
             return IsCrossDataSource || IsCrossTable;
         }
+
+        public bool IsSingleShardingEntityQuery()
+        {
+            return QueryEntities.Where(o => MergeQueryCompilerContext.GetEntityMetadataManager().IsSharding(o)).Take(2)
+                .Count() == 1;
+        }
+
+        public Type GetSingleShardingEntityType()
+        {
+            return QueryEntities.Single(o => MergeQueryCompilerContext.GetEntityMetadataManager().IsSharding(o));
+        }
+        //public bool HasAggregateQuery()
+        //{
+        //    return this.SelectContext.HasAverage();
+        //}
+
+        public IShardingDbContext GetShardingDbContext()
+        {
+            return MergeQueryCompilerContext.GetShardingDbContext();
+        }
+
+        public int GetMaxQueryConnectionsLimit()
+        {
+            return OptimizeResult.GetMaxQueryConnectionsLimit();
+        }
+
+        public ConnectionModeEnum GetConnectionMode(int sqlCount)
+        {
+            return CalcConnectionMode(sqlCount);
+        }
+
+        private ConnectionModeEnum CalcConnectionMode(int sqlCount)
+        {
+            switch (OptimizeResult.GetConnectionMode())
+            {
+                case ConnectionModeEnum.MEMORY_STRICTLY:
+                case ConnectionModeEnum.CONNECTION_STRICTLY: return OptimizeResult.GetConnectionMode();
+                default:
+                {
+                    return GetMaxQueryConnectionsLimit() < sqlCount
+                        ? ConnectionModeEnum.CONNECTION_STRICTLY
+                        : ConnectionModeEnum.MEMORY_STRICTLY;
+                    ;
+                }
+            }
+        }
+
         /// <summary>
-        /// ÊÇ·ñÆôÓÃ¶ÁĞ´·ÖÀë
+        /// æ˜¯å¦å¯ç”¨è¯»å†™åˆ†ç¦»
         /// </summary>
         /// <returns></returns>
         private bool IsUseReadWriteSeparation()
         {
-            return _shardingConfigOption.UseReadWrite;
+            return GetShardingDbContext().IsUseReadWriteSeparation() &&
+                   GetShardingDbContext().CurrentIsReadWriteSeparation();
         }
 
         /// <summary>
-        /// ÊÇ·ñÊ¹ÓÃ²¢ĞĞ²éÑ¯
+        /// æ˜¯å¦ä½¿ç”¨å¹¶è¡ŒæŸ¥è¯¢ä»…åˆ†åº“æ— æ‰€è°“å¯ä»¥å°†åˆ†åº“çš„å½“å‰DbContextè¿›è¡Œå‚¨å­˜èµ·æ¥ä½†æ˜¯åˆ†è¡¨å°±ä¸è¡Œå› ä¸ºä¸€ä¸ªDbContextæœ€å¤šä¸€å¯¹ä¸€è¡¨
         /// </summary>
         /// <returns></returns>
-        private bool IsParallelQuery()
+        public bool IsParallelQuery()
         {
-            return !_shardingConfigOption.AutoTrackEntity|| IsCrossQuery() || IsUseReadWriteSeparation();
+            return MergeQueryCompilerContext.IsParallelQuery();
         }
 
         /// <summary>
-        /// ÊÇ·ñÊ¹ÓÃsharding track
+        /// æ˜¯å¦ä½¿ç”¨sharding track
         /// </summary>
         /// <returns></returns>
         public bool IsUseShardingTrack(Type entityType)
         {
-            //Ã»ÓĞ¿çdbcontext²éÑ¯²¢ÇÒ²»ÊÇ¶ÁĞ´·ÖÀë²Å¿ÉÒÔÄÇÃ´ÊÇ·ñ×·×ÙÖ®ÀàµÄÓÉ²éÑ¯µÄdbcontext×ÔĞĞ´¦Àí
             if (!IsParallelQuery())
                 return false;
             return QueryTrack() && _trackerManager.EntityUseTrack(entityType);
         }
+
         private bool QueryTrack()
         {
-            var shardingDbContext = (DbContext)_shardingDbContext;
-            if (!shardingDbContext.ChangeTracker.AutoDetectChangesEnabled)
+            return MergeQueryCompilerContext.IsQueryTrack();
+        }
+
+        public IShardingComparer GetShardingComparer()
+        {
+            return ((DbContext)GetShardingDbContext()).GetShardingRuntimeContext().GetShardingComparer();
+        }
+
+        /// <summary>
+        /// å¦‚æœè¿”å›falseé‚£ä¹ˆå°±è¯´æ˜ä¸éœ€è¦ç»§ç»­æŸ¥è¯¢äº†
+        /// è¿”å›trueè¡¨ç¤ºéœ€è¦ç»§ç»­æŸ¥è¯¢
+        /// </summary>
+        /// <param name="emptyFunc"></param>
+        /// <param name="r"></param>
+        /// <typeparam name="TResult"></typeparam>
+        /// <returns></returns>
+        /// <exception cref="ShardingCoreQueryRouteNotMatchException"></exception>
+        public bool TryPrepareExecuteContinueQuery<TResult>(Func<TResult> emptyFunc, out TResult r)
+        {
+            if (TakeZeroNoQueryExecute())
+            {
+                r = emptyFunc();
                 return false;
-            if (IsNoTracking.HasValue)
-            {
-                return !IsNoTracking.Value;
             }
-            else
+
+            if (IsRouteNotMatch())
             {
-                return shardingDbContext.ChangeTracker.QueryTrackingBehavior ==
-                       QueryTrackingBehavior.TrackAll;
+                if (ThrowIfQueryRouteNotMatch())
+                {
+                    throw new ShardingCoreQueryRouteNotMatchException(MergeQueryCompilerContext.GetQueryExpression()
+                        .ShardingPrint());
+                }
+                else
+                {
+                    r = emptyFunc();
+                    return false;
+                }
             }
+
+            r = default;
+            return true;
+        }
+
+        /// <summary>
+        /// æ— è·¯ç”±åŒ¹é…
+        /// </summary>
+        /// <returns></returns>
+        public bool IsRouteNotMatch()
+        {
+            return ShardingRouteResult.IsEmpty;
+        }
+
+        /// <summary>
+        /// takeæœ‰å€¼å¹¶ä¸”æ˜¯0çš„æƒ…å†µä¸‹é‚£ä¹ˆå°±è¯´æ˜ä¸éœ€è¦è·å–
+        /// </summary>
+        /// <returns></returns>
+        public bool TakeZeroNoQueryExecute()
+        {
+            return Take is 0;
+        }
+
+        private bool ThrowIfQueryRouteNotMatch()
+        {
+            return _shardingConfigOptions.ThrowIfQueryRouteNotMatch;
+        }
+
+        public bool UseUnionAllMerge()
+        {
+            return MergeQueryCompilerContext.UseUnionAllMerge();
         }
 
         public void Dispose()
@@ -257,6 +370,63 @@ namespace ShardingCore.Sharding
             {
                 await dbContext.DisposeAsync();
             }
+        }
+#endif
+        public bool IsSeqQuery()
+        {
+            return OptimizeResult.IsSequenceQuery();
+        }
+
+        public string GetPrintInfo()
+        {
+            return
+                $"stream merge context:[max query connections limit:{GetMaxQueryConnectionsLimit()}],[is use read write separation:{IsUseReadWriteSeparation()}],[is parallel query:{IsParallelQuery()}],[is not support sharding:{UseUnionAllMerge()}],[is sequence query:{IsSeqQuery()}],[is route not match:{IsRouteNotMatch()}],[throw if query route not match:{ThrowIfQueryRouteNotMatch()}],[is pagination query:{IsPaginationQuery()}],[has group query:{HasGroupQuery()}],[is merge query:{IsMergeQuery()}],[is single sharding entity query:{IsSingleShardingEntityQuery()}]";
+        }
+
+        public int? GetSkip()
+        {
+            return Skip;
+        }
+
+        public int? GetTake()
+        {
+            return Take;
+        }
+
+        public void ReverseOrder()
+        {
+            if (Orders.Any())
+            {
+                var propertyOrders = Orders.Select(o => new PropertyOrder(o.PropertyExpression, !o.IsAsc, o.OwnerType))
+                    .ToArray();
+                ReSetOrders(propertyOrders);
+            }
+        }
+#if !EFCORE2
+
+        public async ValueTask<bool> DbContextDisposeAsync(DbContext dbContext)
+        {
+            if (_parallelDbContexts.TryRemove(dbContext, out var _))
+            {
+                await dbContext.DisposeAsync();
+                
+                return true;
+            }
+
+            return false;
+        }
+#endif
+#if EFCORE2
+
+        public  Task<bool> DbContextDisposeAsync(DbContext dbContext)
+        {
+            if (_parallelDbContexts.TryRemove(dbContext, out var _))
+            {
+                 dbContext.Dispose();
+                return Task.FromResult(true);
+            }
+
+            return Task.FromResult(false);
         }
 #endif
     }

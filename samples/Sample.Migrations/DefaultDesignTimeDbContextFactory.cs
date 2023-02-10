@@ -8,41 +8,48 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Sample.Migrations.EFCores;
 using ShardingCore;
+using ShardingCore.Bootstrappers;
+using ShardingCore.TableExists;
+using ShardingCore.TableExists.Abstractions;
 
 namespace Sample.Migrations
 {
     public class DefaultDesignTimeDbContextFactory: IDesignTimeDbContextFactory<DefaultShardingTableDbContext>
-    { 
+    {
+        private static IServiceProvider _serviceProvider;
+        [Obsolete("Obsolete")]
         static DefaultDesignTimeDbContextFactory()
         {
-            var services = new ServiceCollection();services.AddShardingDbContext<DefaultShardingTableDbContext>(
-                    (conn, o) =>
-                        o.UseSqlServer(conn)
-                            .ReplaceService<IMigrationsSqlGenerator, ShardingSqlServerMigrationsSqlGenerator<DefaultShardingTableDbContext>>()
-                ).Begin(o =>
-                {
-                    o.CreateShardingTableOnStart = false;
-                    o.EnsureCreatedWithOutShardingTable = false;
-                    o.AutoTrackEntity = true;
-                })
-                .AddShardingTransaction((connection, builder) =>
-                    builder.UseSqlServer(connection))
-                .AddDefaultDataSource("ds0",
-                    "Data Source=localhost;Initial Catalog=ShardingCoreDBMigration;Integrated Security=True;")
-                .AddShardingTableRoute(o =>
+            var services = new ServiceCollection();
+            services.AddShardingDbContext<DefaultShardingTableDbContext>()
+                .AddEntityConfig(o =>
                 {
                     o.AddShardingTableRoute<ShardingWithModVirtualTableRoute>();
                     o.AddShardingTableRoute<ShardingWithDateTimeVirtualTableRoute>();
-                }).End();
-            services.AddLogging();
-            var buildServiceProvider = services.BuildServiceProvider();
-            ShardingContainer.SetServices(buildServiceProvider);
-            new ShardingBootstrapper(buildServiceProvider).Start();
+                })
+                .AddConfig(op =>
+                {
+                    op.UseShardingQuery((conStr, builder) =>
+                    {
+                        builder.UseSqlServer(conStr);
+                    });
+                    op.UseShardingTransaction((connection, builder) =>
+                    {
+                        builder.UseSqlServer(connection);
+                    });
+                    op.AddDefaultDataSource("ds0", "Data Source=localhost;Initial Catalog=ShardingCoreDBMigration;Integrated Security=True;");
+                   op.UseShardingMigrationConfigure(op =>
+                   {
+                       op.ReplaceService<IMigrationsSqlGenerator,
+                           ShardingSqlServerMigrationsSqlGenerator<DefaultShardingTableDbContext>>();
+                   });
+                }).ReplaceService<ITableEnsureManager,SqlServerTableEnsureManager>().EnsureConfig();
+            _serviceProvider = services.BuildServiceProvider();
         }
 
         public DefaultShardingTableDbContext CreateDbContext(string[] args)
         {
-            return ShardingContainer.GetService<DefaultShardingTableDbContext>();
+            return _serviceProvider.GetService<DefaultShardingTableDbContext>();
         }
     }
 }

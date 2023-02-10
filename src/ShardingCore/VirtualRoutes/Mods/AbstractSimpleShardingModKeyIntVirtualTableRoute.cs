@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using ShardingCore.Core;
+using ShardingCore.Core.EntityMetadatas;
 using ShardingCore.Core.VirtualRoutes;
 using ShardingCore.Core.VirtualRoutes.TableRoutes.Abstractions;
 
@@ -17,41 +18,37 @@ namespace ShardingCore.VirtualRoutes.Mods
     /// <summary>
     /// 分表字段为int的取模分表
     /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public abstract class AbstractSimpleShardingModKeyIntVirtualTableRoute<T>: AbstractShardingOperatorVirtualTableRoute<T,int> where T:class,IShardingTable
+    /// <typeparam name="TEntity"></typeparam>
+    public abstract class AbstractSimpleShardingModKeyIntVirtualTableRoute<TEntity>: AbstractShardingOperatorVirtualTableRoute<TEntity,int> where TEntity:class
     {
         protected readonly int Mod;
         protected readonly int TailLength;
-        protected readonly char PaddingChar;
-        protected AbstractSimpleShardingModKeyIntVirtualTableRoute(int tailLength,int mod,char paddingChar='0')
+        /// <summary>
+        /// 当取模后不足tailLength左补什么参数
+        /// </summary>
+        protected virtual char PaddingChar=>'0';
+        protected AbstractSimpleShardingModKeyIntVirtualTableRoute(int tailLength,int mod) 
         {
             if(tailLength<1)
                 throw new ArgumentException($"{nameof(tailLength)} less than 1 ");
             if (mod < 1)
                 throw new ArgumentException($"{nameof(mod)} less than 1 ");
-            if (string.IsNullOrWhiteSpace(paddingChar.ToString()))
-                throw new ArgumentException($"{nameof(paddingChar)} cant empty ");
             TailLength = tailLength;
             Mod = mod;
-            PaddingChar = paddingChar;
-        }
-        protected override int ConvertToShardingKey(object shardingKey)
-        {
-            return Convert.ToInt32(shardingKey);
         }
 
         public override string ShardingKeyToTail(object shardingKey)
         {
-            var shardingKeyInt = ConvertToShardingKey(shardingKey);
+            var shardingKeyInt = Convert.ToInt32(shardingKey);
             return Math.Abs(shardingKeyInt % Mod).ToString().PadLeft(TailLength,PaddingChar);
         }
 
-        public override List<string> GetAllTails()
+        public override List<string> GetTails()
         {
             return Enumerable.Range(0, Mod).Select(o => o.ToString().PadLeft(TailLength, PaddingChar)).ToList();
         }
 
-        protected override Expression<Func<string, bool>> GetRouteToFilter(int shardingKey, ShardingOperatorEnum shardingOperator)
+        public override Func<string, bool> GetRouteToFilter(int shardingKey, ShardingOperatorEnum shardingOperator)
         {
            
             var t = ShardingKeyToTail(shardingKey);

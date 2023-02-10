@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
-using System.Linq.Expressions;
-using ShardingCore.Core.PhysicTables;
 using ShardingCore.Exceptions;
 using ShardingCore.Extensions;
 using ShardingCore.Utils;
@@ -18,15 +17,18 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes.Abstractions
     /// <summary>
     /// 抽象类型抽象出对应的条件表达式
     /// </summary>
-    /// <typeparam name="T"></typeparam>
+    /// <typeparam name="TEntity"></typeparam>
     /// <typeparam name="TKey"></typeparam>
-    public abstract class AbstractShardingOperatorVirtualDataSourceRoute<T, TKey> : AbstractShardingFilterVirtualDataSourceRoute<T, TKey> where T : class, IShardingDataSource
+    public abstract class AbstractShardingOperatorVirtualDataSourceRoute<TEntity, TKey> : AbstractShardingFilterVirtualDataSourceRoute<TEntity, TKey> where TEntity : class
     {
-
         protected override List<string> DoRouteWithPredicate(List<string> allDataSourceNames, IQueryable queryable)
         {
-            //获取所有需要路由的表后缀
-            var filter = ShardingUtil.GetRouteShardingTableFilter(queryable, ShardingUtil.Parse(typeof(T)), ConvertToShardingKey, GetRouteToFilter);
+            //获取路由后缀表达式
+            var routeParseExpression = ShardingUtil.GetRouteParseExpression(queryable, EntityMetadata, GetRouteFilter, false);
+            //表达式缓存编译
+            // var filter = CachingCompile(routeParseExpression);
+            var filter = routeParseExpression.GetRoutePredicate();
+            //通过编译结果进行过滤
             var dataSources = allDataSourceNames.Where(o => filter(o)).ToList();
             return dataSources;
         }
@@ -37,8 +39,29 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes.Abstractions
         /// </summary>
         /// <param name="shardingKey">分表的值</param>
         /// <param name="shardingOperator">操作</param>
+        /// <param name="shardingPropertyName">操作</param>
         /// <returns>如果返回true表示返回该表 第一个参数 tail 第二参数是否返回该物理表</returns>
-        protected abstract Expression<Func<string, bool>> GetRouteToFilter(TKey shardingKey, ShardingOperatorEnum shardingOperator);
+        public virtual Func<string, bool> GetRouteFilter(object shardingKey,
+            ShardingOperatorEnum shardingOperator, string shardingPropertyName)
+        {
+            if (EntityMetadata.IsMainShardingDataSourceKey(shardingPropertyName))
+            {
+                return GetRouteToFilter((TKey)shardingKey, shardingOperator);
+            }
+            else
+            {
+                return GetExtraRouteFilter(shardingKey, shardingOperator, shardingPropertyName);
+            }
+        }
+
+        public abstract Func<string, bool> GetRouteToFilter(TKey shardingKey,
+            ShardingOperatorEnum shardingOperator);
+
+        public virtual Func<string, bool> GetExtraRouteFilter(object shardingKey,
+            ShardingOperatorEnum shardingOperator, string shardingPropertyName)
+        {
+            throw new NotImplementedException(shardingPropertyName);
+        }
 
         public override string RouteWithValue(object shardingKey)
         {
@@ -48,13 +71,13 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes.Abstractions
             var dataSources = allDataSourceNames.Where(o => o== shardingKeyToDataSource).ToList();
             if (dataSources.IsEmpty())
             {
-                var routeConfig = ShardingUtil.Parse(typeof(T));
-                throw new ShardingKeyRouteNotMatchException($"{routeConfig.EntityType} -> [{routeConfig.ShardingTableField}] ->【{shardingKey}】 all data sources ->[{string.Join(",", allDataSourceNames.Select(o=>o))}]");
+                throw new ShardingCoreException($"sharding key route not match {EntityMetadata.EntityType} -> [{EntityMetadata.ShardingDataSourceProperty.Name}] ->【{shardingKey}】 all data sources ->[{string.Join(",", allDataSourceNames.Select(o=>o))}]");
             }
 
             if (dataSources.Count > 1)
-                throw new ShardingKeyRouteMoreException($"data source:{string.Join(",", dataSources.Select(o => $"[{o}]"))}");
+                throw new ShardingCoreException($"more than one route match data source:{string.Join(",", dataSources.Select(o => $"[{o}]"))}");
             return dataSources[0];
         }
+
     }
 }

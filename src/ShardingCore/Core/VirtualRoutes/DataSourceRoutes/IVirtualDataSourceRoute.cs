@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ShardingCore.Core.EntityMetadatas;
+using ShardingCore.Core.EntityShardingMetadatas;
 using ShardingCore.Core.VirtualDatabase.VirtualDataSources.PhysicDataSources;
+using ShardingCore.Sharding.EntityQueryConfigurations;
 using ShardingCore.Sharding.PaginationConfigurations;
 
 namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes
@@ -14,7 +17,7 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes
 */
     public interface IVirtualDataSourceRoute
     {
-        Type ShardingEntityType { get;}
+        EntityMetadata EntityMetadata { get; }
         /// <summary>
         /// 分页配置
         /// </summary>
@@ -47,19 +50,20 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes
         /// <param name="dataSourceName"></param>
         /// <returns></returns>
         bool AddDataSourceName(string dataSourceName);
-        /// <summary>
-        /// 初始化
-        /// </summary>
-        void Init();
 
     }
     
-    public interface IVirtualDataSourceRoute<T> : IVirtualDataSourceRoute where T : class, IShardingDataSource
+    public interface IVirtualDataSourceRoute<TEntity> : IVirtualDataSourceRoute, IEntityMetadataDataSourceConfiguration<TEntity> where TEntity : class
     {
         /// <summary>
         /// 返回null就是表示不开启分页配置
         /// </summary>
         /// <returns></returns>
-        IPaginationConfiguration<T> CreatePaginationConfiguration();
+        IPaginationConfiguration<TEntity> CreatePaginationConfiguration();
+        ///// <summary>
+        ///// 配置查询
+        ///// </summary>
+        ///// <returns></returns>
+        //IEntityQueryConfiguration<TEntity> CreateEntityQueryConfiguration();
     }
 }

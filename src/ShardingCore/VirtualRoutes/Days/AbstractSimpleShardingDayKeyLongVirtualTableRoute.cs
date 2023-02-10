@@ -1,24 +1,23 @@
-using System;
-using System.Collections.Generic;
-using System.Linq.Expressions;
-using ShardingCore.Core;
 using ShardingCore.Core.VirtualRoutes;
 using ShardingCore.Helpers;
 using ShardingCore.VirtualRoutes.Abstractions;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
 
 namespace ShardingCore.VirtualRoutes.Days
 {
-/*
-* @Author: xjm
-* @Description:
-* @Date: Wednesday, 27 January 2021 08:56:38
-* @Email: 326308290@qq.com
-*/
-    public abstract class AbstractSimpleShardingDayKeyLongVirtualTableRoute<T>:AbstractShardingTimeKeyLongVirtualTableRoute<T> where T:class,IShardingTable
+    /*
+    * @Author: xjm
+    * @Description:
+    * @Date: Wednesday, 27 January 2021 08:56:38
+    * @Email: 326308290@qq.com
+    */
+    public abstract class AbstractSimpleShardingDayKeyLongVirtualTableRoute<TEntity>:AbstractShardingTimeKeyLongVirtualTableRoute<TEntity> where TEntity:class
     {
-
         public abstract DateTime GetBeginTime();
-        public override List<string> GetAllTails()
+        protected override List<string> CalcTailsOnStart()
         {
             var beginTime = GetBeginTime().Date;
          
@@ -43,7 +42,7 @@ namespace ShardingCore.VirtualRoutes.Days
             return $"{dateTime:yyyyMMdd}";
         }
 
-        protected override Expression<Func<string, bool>> GetRouteToFilter(long shardingKey, ShardingOperatorEnum shardingOperator)
+        public override Func<string, bool> GetRouteToFilter(long shardingKey, ShardingOperatorEnum shardingOperator)
         {
             var t = TimeFormatToTail(shardingKey);
             switch (shardingOperator)
@@ -73,5 +72,20 @@ namespace ShardingCore.VirtualRoutes.Days
             }
         }
 
+        public override string[] GetCronExpressions()
+        {
+            return new[]
+            {
+                "0 59 23 * * ?",
+                "0 0 0 * * ?",
+                "0 1 0 * * ?",
+            };
+        }
+
+        public override string[] GetJobCronExpressions()
+        {
+            var crons = base.GetJobCronExpressions().Concat(new []{"0 0 0 * * ?"    }).Distinct().ToArray();
+            return crons;
+        }
     }
 }

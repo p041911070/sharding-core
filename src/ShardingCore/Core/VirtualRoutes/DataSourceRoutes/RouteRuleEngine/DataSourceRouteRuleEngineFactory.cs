@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ShardingCore.Sharding.Abstractions;
@@ -17,47 +18,50 @@ namespace ShardingCore.Core.VirtualRoutes.DataSourceRoutes.RouteRuleEngine
     /// <summary>
     /// 分库路由引擎工程
     /// </summary>
-    public class DataSourceRouteRuleEngineFactory<TShardingDbContext>: IDataSourceRouteRuleEngineFactory<TShardingDbContext> where TShardingDbContext : DbContext, IShardingDbContext
+    public class DataSourceRouteRuleEngineFactory: IDataSourceRouteRuleEngineFactory
     {
-        private readonly IDataSourceRouteRuleEngine<TShardingDbContext> _dataSourceRouteRuleEngine;
+        private readonly IDataSourceRouteRuleEngine _dataSourceRouteRuleEngine;
         /// <summary>
         /// ctor
         /// </summary>
         /// <param name="dataSourceRouteRuleEngine"></param>
-        public DataSourceRouteRuleEngineFactory(IDataSourceRouteRuleEngine<TShardingDbContext> dataSourceRouteRuleEngine)
+        public DataSourceRouteRuleEngineFactory(IDataSourceRouteRuleEngine dataSourceRouteRuleEngine)
         {
             _dataSourceRouteRuleEngine = dataSourceRouteRuleEngine;
         }
         /// <summary>
         /// 通过表达式创建分库路由上下文
         /// </summary>
-        /// <typeparam name="T"></typeparam>
         /// <param name="queryable"></param>
+        /// <param name="shardingDbContext"></param>
+        /// <param name="queryEntities"></param>
         /// <returns></returns>
-        public DataSourceRouteRuleContext<T> CreateContext<T>(IQueryable<T> queryable)
+        private DataSourceRouteRuleContext CreateContext(IQueryable queryable,IShardingDbContext shardingDbContext,Dictionary<Type,IQueryable> queryEntities)
         {
-            return new DataSourceRouteRuleContext<T>(queryable);
+            return new DataSourceRouteRuleContext(queryable, shardingDbContext, queryEntities);
         }
         /// <summary>
         /// 路由到具体的物理数据源
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="queryable"></param>
+        /// <param name="shardingDbContext"></param>
+        /// <param name="queryEntities"></param>
         /// <returns></returns>
-        public DataSourceRouteResult Route<T>(IQueryable<T> queryable)
+        public DataSourceRouteResult Route(IQueryable queryable, IShardingDbContext shardingDbContext, Dictionary<Type, IQueryable> queryEntities)
         {
-            var ruleContext = CreateContext<T>(queryable);
+            var ruleContext = CreateContext(queryable, shardingDbContext,queryEntities);
             return _dataSourceRouteRuleEngine.Route(ruleContext);
         }
-        /// <summary>
-        /// 路由到具体的物理数据源
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="ruleContext"></param>
-        /// <returns></returns>
-        public DataSourceRouteResult Route<T>(DataSourceRouteRuleContext<T> ruleContext)
-        {
-            return _dataSourceRouteRuleEngine.Route(ruleContext);
-        }
+        ///// <summary>
+        ///// 路由到具体的物理数据源
+        ///// </summary>
+        ///// <typeparam name="T"></typeparam>
+        ///// <param name="ruleContext"></param>
+        ///// <returns></returns>
+        //public DataSourceRouteResult Route(DataSourceRouteRuleContext ruleContext)
+        //{
+        //    return _dataSourceRouteRuleEngine.Route(ruleContext);
+        //}
     }
 }

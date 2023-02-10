@@ -1,32 +1,357 @@
-<h1 align="center"> ShardingCore </h1>
+<p align="center">
+  <img height="340" src="https://xuejmnet.github.io/sharding-core-doc/logo.svg">
+</p>
 
+# English | [中文](https://github.com/dotnetcore/sharding-core/blob/main/README-zh.md)
 
-`ShardingCore` 易用、简单、高性能、普适性，是一款扩展针对efcore生态下的分表分库的扩展解决方案,支持efcore2+的所有版本,支持efcore2+的所有数据库、支持自定义路由、动态路由、高性能分页、读写分离的一款组件，如果你喜欢这组件或者这个组件对你有帮助请点击下发star让更多的.neter可以看到使用
+# ShardingCore
+high performance lightweight solution for efcore sharding table and sharding database support read-write-separation.
+- zero dependency
+- zero learning cost
+- zero incursion
 
 ---
+- [Gitee](https://gitee.com/xuejm/sharding-core) 国内镜像
 
-<div align="center">
-<p> <a href="https://gitee.com/dotnetchina/sharding-core">Gitee Star</a> 助力dotnet 生态 <a href="https://github.com/xuejmnet/sharding-core">Github Star</a> </p>
-</div>
+- [捐赠](#捐赠)
 
----
-### 依赖
+## Community Partners and Sponsors
 
-Release  | EF Core | .NET Standard | .NET (Core) 
+<a href="https://www.jetbrains.com/?from=.NETCoreCommunity(NCC)" target="_blank">
+<img src="./imgs/jetbrains.png" title="JetBrains" width=130 />
+</a>
+
+## 📚 Documentation
+
+[中文文档Github](https://xuejmnet.github.io/sharding-core-doc/) | [English Document Github](https://xuejmnet.github.io/sharding-core-doc/en/)
+
+
+[中文文档Gitee](https://xuejm.gitee.io/sharding-core-doc/) | [English Document Gitee](https://xuejm.gitee.io/sharding-core-doc/en/)
+
+## How Choose Version
+- shardingcore lastversion.efcoreversion.x.x
+
+- first version is shardingcore version
+- second version is efcore version 
+- other version use last version
+
+- efcore7 use shardingcore7.7.x.x
+
+- efcore6 use shardingcore7.6.x.x
+
+- efcore5 use shardingcore7.5.x.x
+
+- efcore3 use shardingcore7.3.x.x
+
+- efcore2 use shardingcore7.2.x.x
+
+## Dependency
+
+### Before ShardingCore 6.7.0.0
+
+Release  | EF Core | .NET  | .NET (Core) 
 --- | --- | --- | --- 
-[5.x.x.x](https://www.nuget.org/packages/ShardingCore) | >= 5.0.10 | 2.1 | 3.0+ 
-[3.x.x.x](https://www.nuget.org/packages/ShardingCore) | 3.1.18 | 2.0 | 2.0+ 
-[2.x.x.x](https://www.nuget.org/packages/ShardingCore) | 2.2.6 | 2.0 | 2.0+ 
-### 数据库支持 
-数据库  | 是否支持 | 支持情况
---- | --- | --- 
-SqlServer | 支持 | 支持
-MySql |支持 | 支持
-PostgreSql | 支持 | 支持
-SQLite | 支持 | 未测试
-Oracle | 支持 | 未测试
-其他 | 支持(只要efcore支持) | 未测试
+[6.x.x.x](https://www.nuget.org/packages/ShardingCore) |  6.0.0 | net 6.0 | 6.0+ 
+[5.x.x.x](https://www.nuget.org/packages/ShardingCore) |  5.0.10 | Standard 2.1 | 5.0+ 
+[3.x.x.x](https://www.nuget.org/packages/ShardingCore) | 3.1.18 | Standard 2.0 | 2.0+ 
+[2.x.x.x](https://www.nuget.org/packages/ShardingCore) | 2.2.6 | Standard 2.0 | 2.0+ 
+### After ShardingCore 6.7.0.0
 
+Use Condition Compile With NetFramework not
+
+Release  | EF Core | .NET (Core) 
+--- | --- |  --- 
+[6.7.0.0+](https://www.nuget.org/packages/ShardingCore)| 6.x     | net6                          
+[6.7.0.0+](https://www.nuget.org/packages/ShardingCore)| 5.x     | net5 or netstandard2.1       
+[6.7.0.0+](https://www.nuget.org/packages/ShardingCore)| 3.x     | netcoreapp3 or netstandard2.0 
+[6.7.0.0+](https://www.nuget.org/packages/ShardingCore)| 2.x     | netcoreapp2                  
+
+
+## Quick start
+5 steps implement sharding by month and support auto create table by month
+### Step 1: Install the package
+Choose data base driver for efcore
+```shell
+# basic package
+PM> Install-Package ShardingCore
+# sqlserver driver
+PM> Install-Package Microsoft.EntityFrameworkCore.SqlServer
+# mysql driver
+#PM> Install-Package Pomelo.EntityFrameworkCore.MySql
+# use other database driver,if efcore support
+```
+
+### Step 2: Query entity
+Query entity order
+```csharp
+
+    /// <summary>
+    /// order table
+    /// </summary>
+    public class Order
+    {
+        /// <summary>
+        /// order Id
+        /// </summary>
+        public string Id { get; set; }
+        /// <summary>
+        /// payer id
+        /// </summary>
+        public string Payer { get; set; }
+        /// <summary>
+        /// pay money cent
+        /// </summary>
+        public long Money { get; set; }
+        /// <summary>
+        /// area
+        /// </summary>
+        public string Area { get; set; }
+        /// <summary>
+        /// order status
+        /// </summary>
+        public OrderStatusEnum OrderStatus { get; set; }
+        /// <summary>
+        /// CreationTime
+        /// </summary>
+        public DateTime CreationTime { get; set; }
+    }
+    public enum OrderStatusEnum
+    {
+        NoPay=1,
+        Paying=2,
+        Payed=3,
+        PayFail=4
+    }
+```
+### Step 3: Create DbContext
+Create `MyDbContext` extends `AbstractShardingDbContext`,
+then this dbcontext support sharding database,if u want support 
+sharding table(spilt table eg. order_202101,order_202102,order_202103......),u need implements `IShardingTableDbContext`
+```csharp
+
+    public class MyDbContext:AbstractShardingDbContext,IShardingTableDbContext
+    {
+        public MyDbContext(DbContextOptions<MyDbContext> options) : base(options)
+        {
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<Order>(entity =>
+            {
+                entity.HasKey(o => o.Id);
+                entity.Property(o => o.Id).IsRequired().IsUnicode(false).HasMaxLength(50);
+                entity.Property(o=>o.Payer).IsRequired().IsUnicode(false).HasMaxLength(50);
+                entity.Property(o => o.Area).IsRequired().IsUnicode(false).HasMaxLength(50);
+                entity.Property(o => o.OrderStatus).HasConversion<int>();
+                //really table name is Order_202101,Order_202102,Order_202103.....
+                entity.ToTable(nameof(Order));
+            });
+        }
+        /// <summary>
+        /// empty implment if use sharding table
+        /// </summary>
+        public IRouteTail RouteTail { get; set; }
+    }
+```
+
+### Step 4:Create route that data(Order) query mapping table name
+
+```csharp
+//Route constructor support dependency injection,that's life time scope is `Singleton`
+
+    public class OrderVirtualTableRoute:AbstractSimpleShardingMonthKeyDateTimeVirtualTableRoute<Order>
+    {
+        //private readonly IServiceProvider _serviceProvider;
+
+        //public OrderVirtualTableRoute(IServiceProvider serviceProvider)
+        //{
+            //_serviceProvider = serviceProvider;
+        //}
+        /// <summary>
+        /// fixed value don't use DateTime.Now because if  if application restart this value where change
+        /// </summary>
+        /// <returns></returns>
+        public override DateTime GetBeginTime()
+        {
+            return new DateTime(2021, 1, 1);
+        }
+        /// <summary>
+        /// configure sharding property
+        /// </summary>
+        /// <param name="builder"></param>
+
+        public override void Configure(EntityMetadataTableBuilder<Order> builder)
+        {
+            builder.ShardingProperty(o => o.CreationTime);
+        }
+        /// <summary>
+        /// enable auto create table job
+        /// </summary>
+        /// <returns></returns>
+
+        public override bool AutoCreateTableByTime()
+        {
+            return true;
+        }
+    }
+```
+
+### Step 5: Start up Configure
+u need modify `AddDefaultDataSource` method second param(connection string),don't modify `UseShardingQuery`、`UseShardingTransaction` delegate params
+```csharp
+
+        public void ConfigureServices(IServiceCollection services)
+        {
+
+            //sharding config
+            services.AddShardingDbContext<MyDbContext>()
+                .UseRouteConfig(op =>
+                {
+                    op.AddShardingTableRoute<OrderVirtualTableRoute>();
+                }).UseConfig(op =>
+                {
+                    op.UseShardingQuery((connStr, builder) =>
+                    {
+                        //connStr is delegate input param
+                        builder.UseSqlServer(connStr);
+                    });
+                    op.UseShardingTransaction((connection, builder) =>
+                    {
+                        //connection is delegate input param
+                        builder.UseSqlServer(connection);
+                    });
+                    //use your data base connection string
+                    op.AddDefaultDataSource(Guid.NewGuid().ToString("n"),
+                        "Data Source=localhost;Initial Catalog=EFCoreShardingTableDB;Integrated Security=True;");
+                }).AddShardingCore();
+        }
+
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        {
+            if (env.IsDevelopment())
+            {
+                app.UseDeveloperExceptionPage();
+            }
+            //not required, enable check table missing and auto create,非必须  启动检查缺少的表并且创建
+            app.ApplicationServices.UseAutoTryCompensateTable();
+            // other configure....
+        }
+```
+then efcore support sharding table，like sharding-jdbc in java,u can happy coding for efcore
+
+```csharp
+[Route("api/[controller]")]
+public class ValuesController : Controller
+{
+        private readonly MyDbContext _myDbContext;
+
+        public ValuesController(MyDbContext myDbContext)
+        {
+            _myDbContext = myDbContext;
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Get()
+        {
+            
+            //_myDbContext.Add(order);
+            //_myDbContext.Udpate(order);
+            //_myDbContext.Remove(order);
+            //_myDbContext.SaveChanges();
+            var order = await _myDbContext.Set<Order>().FirstOrDefaultAsync(o => o.Id == "2");
+            return OK(order)
+        }
+}
+```
+
+
+## Performance
+
+Test 
+ - on expression compile cache
+ - ShardingCore x.3.1.63+ version
+ - efcore 6.0 version
+ - order id is string, sharding mod(hashcode%5)
+ - N mean execute count
+
+[Benchmark Demo](https://github.com/xuejmnet/sharding-core/blob/main/benchmarks/ShardingCoreBenchmark/EFCoreCrud.cs)
+
+### 性能损耗 sql server 2012,data rows 7734363 =773w
+
+// * Summary *
+
+BenchmarkDotNet=v0.13.1, OS=Windows 10.0.18363.1500 (1909/November2019Update/19H2)
+AMD Ryzen 9 3900X, 1 CPU, 24 logical and 12 physical cores
+.NET SDK=6.0.100
+  [Host]     : .NET 6.0.0 (6.0.21.52210), X64 RyuJIT
+  DefaultJob : .NET 6.0.0 (6.0.21.52210), X64 RyuJIT
+
+
+|                             Method |  N |     Mean |     Error |    StdDev |
+|----------------------------------- |--- |---------:|----------:|----------:|
+| NoShardingIndexFirstOrDefaultAsync | 10 | 1.512 ms | 0.0071 ms | 0.0063 ms |
+|   ShardingIndexFirstOrDefaultAsync | 10 | 1.567 ms | 0.0127 ms | 0.0113 ms |
+
+针对未分片数据的查询性能,可以看出10次查询差距为0.05ms,单次查询损耗约为5微妙=0.005毫秒,损耗占比为3%,
+
+结论：efcore 原生查询和sharding-core的查询在针对未分片对象查询上性能可达原先的97%具有极高的性能
+
+### 性能测试
+
+
+#### sql server 2012,data rows 7734363 =773w
+
+// * Summary *
+
+BenchmarkDotNet=v0.13.1, OS=Windows 10.0.18363.1500 (1909/November2019Update/19H2)
+AMD Ryzen 9 3900X, 1 CPU, 24 logical and 12 physical cores
+.NET SDK=6.0.101
+[Host]     : .NET 6.0.1 (6.0.121.56705), X64 RyuJIT
+DefaultJob : .NET 6.0.1 (6.0.121.56705), X64 RyuJIT
+
+
+|                               Method |  N |       Mean |      Error |     StdDev |
+|------------------------------------- |--- |-----------:|-----------:|-----------:|
+|   NoShardingIndexFirstOrDefaultAsync | 10 |   1.678 ms |  0.0323 ms |  0.0359 ms |
+|     ShardingIndexFirstOrDefaultAsync | 10 |   2.005 ms |  0.0161 ms |  0.0143 ms |
+| NoShardingNoIndexFirstOrDefaultAsync | 10 | 495.933 ms |  9.4911 ms | 10.5494 ms |
+|   ShardingNoIndexFirstOrDefaultAsync | 10 | 596.112 ms | 11.8907 ms | 13.2165 ms |
+|          NoShardingNoIndexCountAsync | 10 | 477.537 ms |  1.4817 ms |  1.2373 ms |
+|            ShardingNoIndexCountAsync | 10 | 594.833 ms |  7.4057 ms |  5.7819 ms |
+|     NoShardingNoIndexLikeToListAsync | 10 | 665.277 ms |  1.3382 ms |  1.1174 ms |
+|       ShardingNoIndexLikeToListAsync | 10 | 840.865 ms | 16.1917 ms | 17.3249 ms |
+|         NoShardingNoIndexToListAsync | 10 | 480.368 ms |  1.3688 ms |  1.2134 ms |
+|           ShardingNoIndexToListAsync | 10 | 604.850 ms |  8.6204 ms |  8.0635 ms |
+
+#### mysql 5.7,data rows 7553790=755w innerdb_buffer_size=3G
+
+
+
+// * Summary *
+
+BenchmarkDotNet=v0.13.1, OS=Windows 10.0.18363.1500 (1909/November2019Update/19H2)
+AMD Ryzen 9 3900X, 1 CPU, 24 logical and 12 physical cores
+.NET SDK=6.0.101
+[Host]     : .NET 6.0.1 (6.0.121.56705), X64 RyuJIT
+DefaultJob : .NET 6.0.1 (6.0.121.56705), X64 RyuJIT
+
+
+|                               Method |  N |          Mean |       Error |      StdDev |
+|------------------------------------- |--- |--------------:|------------:|------------:|
+|   NoShardingIndexFirstOrDefaultAsync | 10 |      5.646 ms |   0.0164 ms |   0.0145 ms |
+|     ShardingIndexFirstOrDefaultAsync | 10 |      5.679 ms |   0.0359 ms |   0.0319 ms |
+| NoShardingNoIndexFirstOrDefaultAsync | 10 |  5,212.736 ms | 230.0841 ms | 678.4080 ms |
+|   ShardingNoIndexFirstOrDefaultAsync | 10 |  2,013.107 ms |  10.4256 ms |   9.2420 ms |
+|          NoShardingNoIndexCountAsync | 10 |  9,483.988 ms |  42.0931 ms |  39.3739 ms |
+|            ShardingNoIndexCountAsync | 10 |  2,029.698 ms |  12.4008 ms |  10.9929 ms |
+|     NoShardingNoIndexLikeToListAsync | 10 | 10,569.283 ms |  20.9163 ms |  16.3301 ms |
+|       ShardingNoIndexLikeToListAsync | 10 |  2,208.804 ms |  11.0483 ms |  10.3346 ms |
+|         NoShardingNoIndexToListAsync | 10 |  9,485.263 ms |  21.2558 ms |  17.7496 ms |
+|           ShardingNoIndexToListAsync | 10 |  2,012.086 ms |  39.2986 ms |  45.2563 ms |
+
+具体可以通过first前两次结果来计算得出结论单次查询的的损耗为0.04毫秒上下， sqlserver的各项数据在分表和未分表的情况下都几乎差不多可以得出在770w数据集情况下数据库还并未是数据瓶颈的关键，但是mysql可以看到在分表和未分表的情况下如果涉及到没有索引的全表扫描那么性能的差距将是分表后的表数目之多，测试中为5-6倍，也就是分表数目
 
 
 - [使用介绍](#使用介绍)
@@ -49,6 +374,7 @@ Oracle | 支持 | 未测试
     - [批量操作](#批量操作)
     - [读写分离](#读写分离)
     - [高性能分页](#高性能分页)
+    - [表达式缓存](#表达式缓存)
 - [注意事项](#注意事项)
 - [计划(Future)](#计划)
 - [最后](#最后)
@@ -598,7 +924,7 @@ var list = new List<SysUserMod>();
                 _defaultTableDbContext.SaveChanges();
           //or
             var dbContexts = _defaultTableDbContext.BulkShardingEnumerable(list);
-            using (var tran = _defaultTableDbContext.BeginTransaction())
+            using (var tran = _defaultTableDbContext.Database.BeginTransaction())
             {
                     foreach (var dataSourceMap in dbContexts)
                     {
@@ -619,7 +945,12 @@ var list = new List<SysUserMod>();
 ## 读写分离
 该框架目前已经支持一主多从的读写分离`AddReadWriteSeparation`,支持轮询 Loop和随机 Random两种读写分离策略,又因为读写分离多链接的时候会导致数据读写不一致,(如分页其实是2步第一步获取count，第二部获取list)会导致数据量在最后几页出现缺量的问题,
 针对这个问题框架目前实现了自定义读链接获取策略`ReadConnStringGetStrategyEnum.LatestEveryTime`表示为每次都是新的(这个情况下会出现上述问题),`ReadConnStringGetStrategyEnum.LatestFirstTime`表示以dbcontext作为单位获取一次(同dbcontext不会出现问题),
-又因为各节点读写分离网络等一系列问题会导致刚刚写入的数据没办法获取到所以系统默认在dbcontext上添加是否使用读写分离如果false默认选择写字符串去读取`_defaultTableDbContext.ReadWriteSeparation=false`
+又因为各节点读写分离网络等一系列问题会导致刚刚写入的数据没办法获取到所以系统默认在dbcontext上添加是否使用读写分离如果false默认选择写字符串去读取`_defaultTableDbContext.ReadWriteSeparation=false`或者使用两个封装好的方法
+```c#
+ //切换到只读数据库，只读数据库又只配置了A数据源读取B数据源
+            _virtualDbContext.ReadWriteSeparationReadOnly();
+            _virtualDbContext.ReadWriteSeparationWriteOnly();
+```
 
 ```c#
 services.AddShardingDbContext<DefaultShardingDbContext>(
@@ -646,11 +977,12 @@ services.AddShardingDbContext<DefaultShardingDbContext>(
                             "Data Source=localhost;Initial Catalog=ShardingCoreDBReadOnly2;Integrated Security=True;"}
                         }
                     };
-                }, ReadStrategyEnum.Loop).End();
+                }, ReadStrategyEnum.Loop,defaultEnable:true).End();
 
+            _virtualDbContext.ReadWriteSeparationReadOnly();
                 //reslove read write delay data not found
-                _defaultTableDbContext.ReadWriteSeparation=false;
                 //dbcontext use write connection string 
+            _virtualDbContext.ReadWriteSeparationWriteOnly();
 ```
 
 ## 高性能分页
@@ -700,6 +1032,50 @@ var shardingPageResultAsync = await _defaultTableDbContext.Set<SysUserMod>().Ord
 ```
 ### 注意:如果你是按时间排序无论何种排序建议开启并且加上时间顺序排序,如果你是取模或者自定义分表,建议将Id作为顺序排序,如果没有特殊情况请使用id排序并且加上反向排序作为性能优化,如果entity同时支持分表分库并且两个路由都支持同一个属性的顺序排序优先级为先分库后分表
 
+## 表达式缓存
+可以通过路由开启表达式缓存针对单个tail的表达式进行缓存支持=,>,>=,<,<=,equal
+```c#
+
+   public  class OrderCreateTimeVirtualTableRoute:AbstractSimpleShardingMonthKeyDateTimeVirtualTableRoute<Order>
+    {
+        //开启表达式缓存
+        public override bool EnableRouteParseCompileCache => true;
+    }
+```
+针对表达式缓存可以自行重写父类方法来自行实现，也可以仅实现多tail表达式`AbstractShardingRouteParseCompileCacheVirtualTableRoute`,`AbstractShardingRouteParseCompileCacheVirtualDataSourceRoute`
+```c#
+        public virtual Func<string, bool> CachingCompile(Expression<Func<string, bool>> parseWhere)
+        {
+            if (EnableRouteParseCompileCache)
+            {
+                var doCachingCompile = DoCachingCompile(parseWhere);
+                if (doCachingCompile != null)
+                    return doCachingCompile;
+                doCachingCompile = CustomerCachingCompile(parseWhere);
+                if (doCachingCompile != null)
+                    return doCachingCompile;
+            }
+            return parseWhere.Compile();
+        }
+        /// <summary>
+        /// 系统默认永久单表达式缓存
+        /// </summary>
+        /// <param name="parseWhere"></param>
+        /// <returns>返回null会走<see cref="CustomerCachingCompile"/>这个方法如果还是null就会调用<see cref="Compile"/>方法</returns>
+        protected virtual Func<string, bool> DoCachingCompile(Expression<Func<string, bool>> parseWhere)
+        {
+            var shouldCache = ShouldCache(parseWhere);
+            if(shouldCache)
+                return _routeCompileCaches.GetOrAdd(parseWhere, key => parseWhere.Compile());
+            return null;
+        }
+        protected virtual Func<string, bool> CustomerCachingCompile(Expression<Func<string, bool>> parseWhere)
+        {
+            return null;
+        }
+```
+
+开启表达式缓存可以将路由模块的编译由原先的0.14ms升级到0.013ms提示约0.13ms将近10倍性能
 
 # 注意事项
 使用该框架需要注意两点如果你的shardingdbcontext重写了以下服务可能无法使用 如果还想使用需要自己重写扩展[请参考](https://github.com/xuejmnet/sharding-core/blob/main/src/ShardingCore/DIExtension.cs)
@@ -755,6 +1131,9 @@ return optionsBuilder.ReplaceService<IModelCacheKeyFactory, ShardingModelCacheKe
 
 凭借各大开源生态圈提供的优秀代码和思路才有的这个框架,希望可以为.Net生态提供一份微薄之力,该框架本人会一直长期维护,有大神技术支持可以联系下方方式欢迎star :)
 
+# 捐赠
+<img src="./imgs/zfb.jpg" title="JetBrains" width=200 />
+<img src="./imgs/wx.jpg" title="JetBrains" width=222 />
 [博客](https://www.cnblogs.com/xuejiaming)
 
 QQ群:771630778

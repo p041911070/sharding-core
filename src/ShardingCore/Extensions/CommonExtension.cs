@@ -5,11 +5,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
-using ShardingCore.Core;
-using ShardingCore.Core.VirtualTables;
-using ShardingCore.DbContexts.ShardingDbContexts;
 using ShardingCore.Sharding.Abstractions;
-using ShardingCore.Utils;
 
 namespace ShardingCore.Extensions
 {
@@ -78,35 +74,111 @@ namespace ShardingCore.Extensions
         // /// <returns></returns>
         // public static List<VirtualTableDbContextConfig> GetVirtualTableDbContextConfigs(this List<IVirtualTable> virtualTables)
         // {
-        //     return virtualTables.Select(o => new VirtualTableDbContextConfig(o.EntityType, o.GetVirtualTableName(), o.ShardingConfigOption.TailPrefix)).ToList();
+        //     return virtualTables.Select(o => new VirtualTableDbContextConfig(o.EntityType, o.GetVirtualTableName(), o.ShardingConfigOption.TableSeparator)).ToList();
         // }
         /// <summary>
         /// 是否是集合contains方法
         /// </summary>
         /// <param name="express"></param>
-        /// <param name="methodName"></param>
         /// <returns></returns>
-        public static bool IsEnumerableContains(this MethodCallExpression express, string methodName)
+        public static bool IsEnumerableContains(this MethodCallExpression express)
         {
-            return  express.Method.DeclaringType.Namespace.IsIn("System.Linq", "System.Collections.Generic") && methodName == nameof(IList.Contains);
+            var methodName = express.Method.Name;
+            return methodName == nameof(IList.Contains)&& (express.Method.DeclaringType?.Namespace.IsInEnumerable()??false);
         }
-
-        public static ISet<Type> ParseQueryableRoute(this IQueryable queryable)
+        public static bool IsStringContains(this MethodCallExpression express)
         {
-            return ShardingUtil.GetQueryEntitiesFilter(queryable);
+            var methodName = express.Method.Name;
+            return methodName == nameof(string.Contains)&& (express.Method.DeclaringType==typeof(string));
         }
-
-        public static T IfDo<T>(this T t, bool @if,Func<T,T> build)
+        public static bool IsStringStartWith(this MethodCallExpression express)
         {
-            if (@if)
+            var methodName = express.Method.Name;
+            return methodName == nameof(string.StartsWith)&& (express.Method.DeclaringType==typeof(string));
+        }
+        public static bool IsStringEndWith(this MethodCallExpression express)
+        {
+            var methodName = express.Method.Name;
+            return methodName == nameof(string.EndsWith)&& (express.Method.DeclaringType==typeof(string));
+        }
+        /// <summary>
+        /// 是否是equal方法
+        /// </summary>
+        /// <param name="express"></param>
+        /// <returns></returns>
+        public static bool IsNamedEquals(this MethodCallExpression express)
+        {
+            return nameof(object.Equals).Equals(express.Method.Name);
+        }
+        //public static bool IsNamedCompareOrdinal(this BinaryExpression express)
+        //{
+        //    express.
+        //    return nameof(string.CompareOrdinal).Equals(express.Method.Name) || nameof(string.CompareTo).Equals(express.Method.Name) || nameof(string.Compare).Equals(express.Method.Name);
+        //}
+        public static bool IsNamedComparison(this BinaryExpression express,out MethodCallExpression methodCallExpression)
+        {
+            if (express.Left is MethodCallExpression m1 && m1.IsNamedComparison())
             {
-                return build(t);
+                methodCallExpression = m1;
+                return true;
+            }
+            if (express.Right is MethodCallExpression m2 && m2.IsNamedComparison())
+            {
+                methodCallExpression = m2;
+                return true;
             }
 
-            return t;
+            methodCallExpression = null;
+            return false;
         }
-        
-        
+        public static bool GetComparisonLeftAndRight(this MethodCallExpression methodCallExpression, out (Expression Left,Expression Right) comparisonValue)
+        {
+
+            if (methodCallExpression.IsNamedCompare())
+            {
+                if (methodCallExpression.Arguments.Count == 2)
+                {
+                    comparisonValue = (methodCallExpression.Arguments[0], methodCallExpression.Arguments[1]);
+                    return true;
+                }
+            }
+
+            if (methodCallExpression.IsNamedCompareTo())
+            {
+                if (methodCallExpression.Arguments.Count == 1 && methodCallExpression.Object != null)
+                {
+                    comparisonValue = (methodCallExpression.Object, methodCallExpression.Arguments[0]);
+                    return true;
+                }
+            }
+            comparisonValue = (null,null);
+            return false;
+        }
+        public static bool IsNamedComparison(this MethodCallExpression express)
+        {
+            return express.IsNamedCompare() || express.IsNamedCompareTo();
+        }
+        public static bool IsNamedCompare(this MethodCallExpression express)
+        {
+            return nameof(string.CompareTo).Equals(express.Method.Name) || nameof(string.Compare).Equals(express.Method.Name);
+        }
+        public static bool IsNamedCompareTo(this MethodCallExpression express)
+        {
+            return nameof(string.CompareTo).Equals(express.Method.Name) || nameof(string.Compare).Equals(express.Method.Name);
+        }
+
+        //public static ISet<Type> ParseQueryableEntities(this IQueryable queryable, Type dbContextType)
+        //{
+        //    return ShardingUtil.GetQueryEntitiesFilter(queryable, dbContextType);
+        //}
+
+        public static bool IsMemberQueryable(this MemberExpression memberExpression)
+        {
+            if (memberExpression == null)
+                throw new ArgumentNullException(nameof(memberExpression));
+            return (memberExpression.Type.FullName?.StartsWith("System.Linq.IQueryable`1") ?? false) ||typeof(IQueryable).IsAssignableFrom(memberExpression.Type) || typeof(DbContext).IsAssignableFrom(memberExpression.Type);
+        }
+
         public static Type GetSequenceType(this Type type)
         {
             var sequenceType = TryGetSequenceType(type);
@@ -182,6 +254,13 @@ namespace ShardingCore.Extensions
 
                 type = type.BaseType;
             }
+        }
+        
+        public static bool IsMethodReturnTypeQueryableType(this Type type)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+            return typeof(IQueryable).IsAssignableFrom(type);
         }
     }
 }

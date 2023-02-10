@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ShardingCore.Core.VirtualDatabase.VirtualDataSources;
+using ShardingCore.Exceptions;
 using ShardingCore.Sharding.Abstractions;
 using ShardingCore.Sharding.ReadWriteConfigurations;
 using ShardingCore.Sharding.ReadWriteConfigurations.Abstractions;
@@ -16,36 +17,40 @@ namespace ShardingCore.Sharding
     * @Ver: 1.0
     * @Email: 326308290@qq.com
     */
-    public class ActualConnectionStringManager<TShardingDbContext> where TShardingDbContext : DbContext, IShardingDbContext
+    public class ActualConnectionStringManager
     {
-        private readonly IConnectionStringManager<TShardingDbContext> _connectionStringManager;
-        private readonly IReadWriteOptions<TShardingDbContext> _readWriteOptions;
         private readonly bool _useReadWriteSeparation;
         private readonly IShardingReadWriteManager _shardingReadWriteManager;
-        private readonly IVirtualDataSource<TShardingDbContext> _virtualDataSource;
+        private readonly IVirtualDataSource _virtualDataSource;
         public int ReadWriteSeparationPriority { get; set; }
         public bool ReadWriteSeparation { get; set; }
+        public ReadStrategyEnum ReadStrategy { get; set; }
+        public ReadConnStringGetStrategyEnum ReadConnStringGetStrategy { get; set; }
         private string _cacheConnectionString;
-        public ActualConnectionStringManager()
+        public ActualConnectionStringManager(IShardingReadWriteManager shardingReadWriteManager,IVirtualDataSource virtualDataSource)
         {
-            _virtualDataSource=ShardingContainer.GetService<IVirtualDataSource<TShardingDbContext>>();
-            _connectionStringManager = ShardingContainer.GetService<IConnectionStringManager<TShardingDbContext>>();
-            _readWriteOptions = ShardingContainer.GetService<IReadWriteOptions<TShardingDbContext>>();
-            _shardingReadWriteManager = ShardingContainer.GetService<IShardingReadWriteManager>();
-            _useReadWriteSeparation = _connectionStringManager is ReadWriteConnectionStringManager<TShardingDbContext>;
-
+            _shardingReadWriteManager = shardingReadWriteManager;
+            _virtualDataSource=virtualDataSource;
+            _useReadWriteSeparation = virtualDataSource.ConnectionStringManager is ReadWriteConnectionStringManager;
+            if (_useReadWriteSeparation)
+            {
+                ReadWriteSeparationPriority = virtualDataSource.ConfigurationParams.ReadWriteDefaultPriority.GetValueOrDefault();
+                ReadWriteSeparation = virtualDataSource.ConfigurationParams.ReadWriteDefaultEnable.GetValueOrDefault();
+                ReadStrategy = virtualDataSource.ConfigurationParams.ReadStrategy.GetValueOrDefault();
+                ReadConnStringGetStrategy = virtualDataSource.ConfigurationParams.ReadConnStringGetStrategy.GetValueOrDefault();
+            }
         }
-        public bool IsUseReadWriteSeparation()
-        {
-            return _useReadWriteSeparation;
-        }
+        //public bool IsUseReadWriteSeparation()
+        //{
+        //    return _useReadWriteSeparation;
+        //}
         public string GetConnectionString(string dataSourceName, bool isWrite)
         {
             if (isWrite)
                 return GetWriteConnectionString(dataSourceName);
             if (!_useReadWriteSeparation)
             {
-                return _connectionStringManager.GetConnectionString(dataSourceName);
+                return _virtualDataSource.ConnectionStringManager.GetConnectionString(dataSourceName);
             }
             else
             {
@@ -54,41 +59,56 @@ namespace ShardingCore.Sharding
         }
         private string GetWriteConnectionString(string dataSourceName)
         {
-            return _virtualDataSource.GetPhysicDataSource(dataSourceName).ConnectionString;
+            return _virtualDataSource.GetConnectionString(dataSourceName);
         }
 
         private string GetReadWriteSeparationConnectString(string dataSourceName)
         {
             var support = ReadWriteSeparation;
-            var shardingReadWriteContext = _shardingReadWriteManager.GetCurrent<TShardingDbContext>();
+            string readNodeName = null;
+            var hasConfig = false;
+            var shardingReadWriteContext = _shardingReadWriteManager.GetCurrent();
             if (shardingReadWriteContext != null)
             {
-                support = (ReadWriteSeparationPriority >= shardingReadWriteContext.DefaultPriority)
+                var dbFirst = ReadWriteSeparationPriority >= shardingReadWriteContext.DefaultPriority;
+                support = dbFirst
                     ? ReadWriteSeparation
                     : shardingReadWriteContext.DefaultReadEnable;
+                if (!dbFirst&& support)
+                {
+                    hasConfig = shardingReadWriteContext.TryGetDataSourceReadNode(dataSourceName, out readNodeName);
+                }
             }
 
             if (support)
             {
-                return GetReadWriteSeparationConnectString0(dataSourceName);
+                return GetReadWriteSeparationConnectString0(dataSourceName, hasConfig?readNodeName:null);
             }
             return GetWriteConnectionString(dataSourceName);
         }
-        private string GetReadWriteSeparationConnectString0(string dataSourceName)
+        private string GetReadWriteSeparationConnectString0(string dataSourceName,string readNodeName)
         {
-            if (_readWriteOptions.ReadConnStringGetStrategy == ReadConnStringGetStrategyEnum.LatestFirstTime)
+            if (_virtualDataSource.ConnectionStringManager is IReadWriteConnectionStringManager
+                readWriteConnectionStringManager)
             {
-                if (_cacheConnectionString == null)
-                    _cacheConnectionString = _connectionStringManager.GetConnectionString(dataSourceName);
-                return _cacheConnectionString;
-            }
-            else if (_readWriteOptions.ReadConnStringGetStrategy == ReadConnStringGetStrategyEnum.LatestEveryTime)
-            {
-                return _connectionStringManager.GetConnectionString(dataSourceName);
+                if (ReadConnStringGetStrategy == ReadConnStringGetStrategyEnum.LatestFirstTime)
+                {
+                    if (_cacheConnectionString == null)
+                        _cacheConnectionString = readWriteConnectionStringManager.GetReadNodeConnectionString(dataSourceName, readNodeName);
+                    return _cacheConnectionString;
+                }
+                else if (ReadConnStringGetStrategy == ReadConnStringGetStrategyEnum.LatestEveryTime)
+                {
+                    return readWriteConnectionStringManager.GetReadNodeConnectionString(dataSourceName,readNodeName);
+                }
+                else
+                {
+                    throw new ShardingCoreInvalidOperationException($"ReadWriteConnectionStringManager ReadConnStringGetStrategy:{ReadConnStringGetStrategy}");
+                }
             }
             else
             {
-                throw new InvalidOperationException($"ReadWriteConnectionStringManager:{_readWriteOptions.ReadConnStringGetStrategy}");
+                throw new ShardingCoreInvalidOperationException($"virtual data source connection string manager is not [{nameof(IReadWriteConnectionStringManager)}]");
             }
 
         }

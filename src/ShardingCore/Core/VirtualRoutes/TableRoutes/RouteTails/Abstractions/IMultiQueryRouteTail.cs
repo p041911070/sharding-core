@@ -9,7 +9,10 @@ namespace ShardingCore.Core.VirtualRoutes.TableRoutes.RouteTails.Abstractions
     * @Date: Sunday, 22 August 2021 09:44:54
     * @Email: 326308290@qq.com
     */
-    public interface IMultiQueryRouteTail:IRouteTail
+    /// <summary>
+    /// 多模型比如join
+    /// </summary>
+    public interface IMultiQueryRouteTail: IRouteTail, INoCacheRouteTail
     {
         /// <summary>
         /// 获取对象类型的应该后缀

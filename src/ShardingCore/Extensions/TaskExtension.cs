@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
@@ -14,6 +15,7 @@ namespace ShardingCore.Extensions
     * @Ver: 1.0
     * @Email: 326308290@qq.com
     */
+     [ExcludeFromCodeCoverage]
     internal static class TaskExtension
     {
         /// <summary>
@@ -37,6 +39,12 @@ namespace ShardingCore.Extensions
             if (task == null)
                 throw new ArgumentNullException(nameof(task));
             task.GetAwaiter().GetResult();
+        }
+        public static void WaitAndUnwrapException(this Task task,bool continueOnCapturedContext)
+        {
+            if (task == null)
+                throw new ArgumentNullException(nameof(task));
+            task.ConfigureAwait(continueOnCapturedContext).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -71,6 +79,21 @@ namespace ShardingCore.Extensions
             if (task == null)
                 throw new ArgumentNullException(nameof(task));
             return task.GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Waits for the task to complete, unwrapping any exceptions.
+        /// </summary>
+        /// <typeparam name="TResult"></typeparam>
+        /// <param name="task"></param>
+        /// <param name="continueOnCapturedContext"></param>
+        /// <returns>The result of the task.</returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        public static TResult WaitAndUnwrapException<TResult>(this Task<TResult> task,bool continueOnCapturedContext)
+        {
+            if (task == null)
+                throw new ArgumentNullException(nameof(task));
+            return task.ConfigureAwait(continueOnCapturedContext).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -133,5 +156,6 @@ namespace ShardingCore.Extensions
                 cancellationToken.ThrowIfCancellationRequested();
             }
         }
+
     }
 }
